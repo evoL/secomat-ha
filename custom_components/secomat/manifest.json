@@ -1,0 +1,11 @@
+{
+  "domain": "secomat",
+  "name": "Krüger Secomat",
+  "codeowners": [],
+  "config_flow": false,
+  "dependencies": [],
+  "documentation": "https://github.com/ankushbhatiya/secomat-ha",
+  "iot_class": "cloud_polling",
+  "requirements": [],
+  "version": "0.1.0"
+}

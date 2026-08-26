@@ -1,0 +1,78 @@
+"""Minimal async client for the Krüger Secomat cloud API.
+
+Reverse-engineered from the official "secomat" Android app (ch.krueger.secomat).
+Single resource, two verbs:
+  GET  {base}/plc  -> current device state
+  POST {base}/plc  -> send a command
+Both authenticated with two headers: `claim-token` (per-device secret obtained once
+via the app's own BLE pairing/claim flow) and `api` (constant, "1").
+"""
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+import aiohttp
+
+from .const import DEFAULT_API_BASE_URL
+
+_LOGGER = logging.getLogger(__name__)
+
+
+class SecomatApiError(Exception):
+    """Raised when the Secomat API returns an error or is unreachable."""
+
+
+class SecomatClient:
+    """Talks to a single claimed Secomat device via the Krüger cloud API."""
+
+    def __init__(
+        self,
+        session: aiohttp.ClientSession,
+        claiming_token: str,
+        base_url: str = DEFAULT_API_BASE_URL,
+    ) -> None:
+        self._session = session
+        self._token = claiming_token
+        self._base_url = base_url.rstrip("/") + "/"
+
+    @property
+    def _headers(self) -> dict[str, str]:
+        return {"claim-token": self._token, "api": "1"}
+
+    async def async_get_state(self) -> dict[str, Any]:
+        """Fetch current state. Returns the `payload` dict from SecomatStateResponse."""
+        url = self._base_url + "plc"
+        try:
+            async with self._session.get(
+                url, headers=self._headers, timeout=aiohttp.ClientTimeout(total=15)
+            ) as resp:
+                if resp.status != 200:
+                    text = await resp.text()
+                    raise SecomatApiError(f"GET plc failed: HTTP {resp.status}: {text}")
+                data = await resp.json()
+        except aiohttp.ClientError as err:
+            raise SecomatApiError(f"GET plc failed: {err}") from err
+        return data.get("payload", {})
+
+    async def async_send_command(
+        self, command: str, args: dict[str, int] | None = None
+    ) -> None:
+        """Send a command, e.g. OFF / WASH_AUTO / WASH_MANUAL_ON / ROOM_ON / ROOM_OFF /
+        CHANGE (with args like {"hmi_backlight": 1})."""
+        url = self._base_url + "plc"
+        body = {"command": command, "args": args or {}}
+        try:
+            async with self._session.post(
+                url,
+                headers=self._headers,
+                json=body,
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as resp:
+                if resp.status not in (200, 204):
+                    text = await resp.text()
+                    raise SecomatApiError(
+                        f"POST plc {command} failed: HTTP {resp.status}: {text}"
+                    )
+        except aiohttp.ClientError as err:
+            raise SecomatApiError(f"POST plc {command} failed: {err}") from err
