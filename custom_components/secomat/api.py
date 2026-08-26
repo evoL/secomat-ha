@@ -38,7 +38,14 @@ class SecomatClient:
 
     @property
     def _headers(self) -> dict[str, str]:
-        return {"claim-token": self._token, "api": "1"}
+        # "Connection: close" forces aiohttp to drop the underlying TCP connection
+        # after each response instead of returning it to the shared session's pool.
+        # We only poll once a minute, so there's no real cost to this - but it avoids
+        # a real failure mode: a brief network blip can leave a pooled keep-alive
+        # connection silently broken, and aiohttp will keep handing it back out
+        # (raising "Network unreachable" every poll) until something evicts it. Without
+        # this, the only fix was restarting Home Assistant.
+        return {"claim-token": self._token, "api": "1", "Connection": "close"}
 
     async def async_get_state(self) -> dict[str, Any]:
         """Fetch current state. Returns the `payload` dict from SecomatStateResponse."""
