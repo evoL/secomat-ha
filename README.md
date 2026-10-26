@@ -191,6 +191,12 @@ network behavior on hardware and an account the author owns, for personal
 home-automation use. It does not include, redistribute, or depend on any of Krüger's
 proprietary application code or assets. No warranty of any kind.
 
+## Acknowledgements
+
+This project started with the original reverse-engineering work by
+[@ankushbhatiya](https://github.com/ankushbhatiya), who created the initial Krüger
+Secomat Home Assistant integration this repo forked from.
+
 ## License
 
 MIT — see [LICENSE](LICENSE). Applies to this project's own code only.
