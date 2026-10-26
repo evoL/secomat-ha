@@ -41,7 +41,7 @@ class SecomatClient:
     def _headers(self) -> dict[str, str]:
         # "Connection: close" forces aiohttp to drop the underlying TCP connection
         # after each response instead of returning it to the shared session's pool.
-        # We only poll once a minute, so there's no real cost to this - but it avoids
+        # We only poll every 30 seconds, so there's no real cost to this - but it avoids
         # a real failure mode: a brief network blip can leave a pooled keep-alive
         # connection silently broken, and aiohttp will keep handing it back out
         # (raising "Network unreachable" every poll) until something evicts it. Without
@@ -49,7 +49,7 @@ class SecomatClient:
         return {"claim-token": self._token, "api": "1", "Connection": "close"}
 
     async def async_get_state(self) -> dict[str, Any]:
-        """Fetch current state. Returns the `payload` dict from SecomatStateResponse."""
+        """Fetch a normalized state envelope containing src, age, and payload."""
         url = self._base_url + "plc"
         try:
             async with self._session.get(
@@ -63,7 +63,11 @@ class SecomatClient:
                 data = await resp.json()
         except (aiohttp.ClientError, TimeoutError) as err:
             raise SecomatApiError(f"GET plc failed: {err}") from err
-        return data.get("payload", {})
+        return {
+            "src": data.get("src"),
+            "age": data.get("age"),
+            "payload": data.get("payload", {}),
+        }
 
     async def async_send_command(
         self, command: str, args: dict[str, int] | None = None

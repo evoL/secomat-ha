@@ -12,5 +12,10 @@ class SecomatEntity(CoordinatorEntity[SecomatCoordinator]):
     _attr_has_entity_name = True
 
     @property
+    def available(self) -> bool:
+        """Do not expose cached readings or controls as live appliance state."""
+        return super().available and self.coordinator.is_secomat_connected
+
+    @property
     def device_info(self) -> DeviceInfo:
         return self.coordinator.device_info

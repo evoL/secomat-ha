@@ -1,8 +1,11 @@
 """Binary sensor entities for the Krüger Secomat integration."""
 from __future__ import annotations
 
-from homeassistant.components.binary_sensor import BinarySensorEntity
+from typing import Any
+
+from homeassistant.components.binary_sensor import BinarySensorDeviceClass, BinarySensorEntity
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .coordinator import SecomatConfigEntry, SecomatCoordinator
@@ -14,7 +17,11 @@ async def async_setup_entry(
 ) -> None:
     coordinator = entry.runtime_data
     async_add_entities(
-        [SecomatLaundryDetectedSensor(coordinator), SecomatRoomDryingSensor(coordinator)]
+        [
+            SecomatLaundryDetectedSensor(coordinator),
+            SecomatRoomDryingSensor(coordinator),
+            SecomatConnectivitySensor(coordinator),
+        ]
     )
 
 
@@ -37,7 +44,7 @@ class SecomatLaundryDetectedSensor(SecomatBinarySensorBase):
 
     @property
     def is_on(self):
-        value = self.coordinator.data.get("eye_seeing_object")
+        value = self.coordinator.data.get("payload", {}).get("eye_seeing_object")
         return bool(value) if value is not None else None
 
 
@@ -50,4 +57,29 @@ class SecomatRoomDryingSensor(SecomatBinarySensorBase):
 
     @property
     def is_on(self):
-        return bool(self.coordinator.data.get("room_drying_enabled"))
+        return bool(self.coordinator.data.get("payload", {}).get("room_drying_enabled"))
+
+
+class SecomatConnectivitySensor(SecomatBinarySensorBase):
+    """The Secomat's live connection to the cloud, independent of cached readings."""
+
+    _attr_name = "Connectivity"
+    _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _key = "connectivity"
+
+    @property
+    def available(self) -> bool:
+        """Bypass only appliance connectivity; a failed cloud poll is unavailable."""
+        return super(SecomatEntity, self).available
+
+    @property
+    def is_on(self) -> bool:
+        return self.coordinator.is_secomat_connected
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {
+            "source": self.coordinator.data.get("src"),
+            "age": self.coordinator.data.get("age"),
+        }
