@@ -11,66 +11,72 @@ cloud API the app does.
 
 ## What this gives you
 
-A Home Assistant device with nine entities per configured Secomat:
+A Home Assistant device with 14 entities per configured Secomat:
 
-- `sensor.secomat_temperature`, `sensor.secomat_humidity` — live room readings
-- `sensor.secomat_target_humidity_level`, `sensor.secomat_firmware_version`
-- `binary_sensor.secomat_laundry_detected` — the optical Eye Sensor that detects hung
-  laundry
-- `binary_sensor.secomat_room_drying_enabled`
-- `select.secomat_power_mode` — Off / Auto / Manual on
-- `switch.secomat_auto_dry` — one-tap Auto drying control
-- `switch.secomat_room_drying` — 24h Room Drying
+| Entity | Purpose |
+| --- | --- |
+| `sensor.secomat_temperature` | Live room temperature (°C) |
+| `sensor.secomat_humidity` | Live room humidity (%) |
+| `sensor.secomat_drying_state` | Physical Drying State: Idle / Fan only / Drying / Unknown |
+| `sensor.secomat_drying_state_raw` | Diagnostic raw integer Drying State, without averaged measurement statistics |
+| `binary_sensor.secomat_drying` | On whenever the fan or compressor is physically running |
+| `binary_sensor.secomat_laundry_detected` | The optical Eye Sensor detects hung laundry |
+| `binary_sensor.secomat_problem` | Diagnostic warnings/errors, with the active list in the `errors` attribute |
+| `binary_sensor.secomat_connectivity` | Diagnostic live cloud connection, with `source` and `age` attributes |
+| `select.secomat_power_mode` | Power Mode: Off / Auto / Manual on |
+| `select.secomat_target_humidity_level` | Target Humidity Level: Very dry / Dry / Medium / Humid |
+| `switch.secomat_auto_dry` | One-tap Auto drying control |
+| `switch.secomat_room_drying` | 24-hour Room Drying |
+| `switch.secomat_target_humidity_level_lock` | Configuration: persist the Target Humidity Level across drying cycles |
+| `switch.secomat_control_light` | Configuration: the status light on the physical panel |
 
 All entities belong to a single Secomat device in **Settings → Devices & services**,
 showing its Secomat ID and live firmware version. The entity IDs above use the default
 name, **Secomat**; custom names change the default entity ID prefix.
+
+Power Mode and Room Drying describe which modes are armed; Drying State shows what
+the fan and compressor are actually doing. Raw values `0`, `2`, and `6` mean Idle,
+Fan only, and Drying respectively. An unseen integer appears as **Unknown** in the
+enum while remaining visible unchanged in the raw diagnostic sensor; missing
+readings remain unknown rather than implying that the Secomat is idle.
+
+When the Secomat disconnects from the cloud, Connectivity stays available and shows
+**off**. All other 13 entities become **unavailable** so cached readings are not
+recorded as live measurements. A failed cloud poll makes Connectivity unavailable
+too. Live readings recover automatically when the connection returns.
 
 ## Requirements
 
 - A Krüger Secomat, already set up and working with the official **secomat** app
 - Home Assistant (any host with outbound internet — this is a cloud-polling
   integration, no Bluetooth/local network requirement at runtime)
-- Your **Secomat ID** and **Claim Token** — see below, this is the part you can't skip
+- Your **Claim Token** — read it directly over BLE as described below. Home Assistant
+  discovers the **Secomat ID** automatically; you do not need to look it up.
 
-## Getting your Secomat ID and Claim Token
+## Getting your Claim Token over BLE
 
-There's no shared/default Claim Token — each phone that pairs with a Secomat gets its own,
-issued during the app's BLE "claim" pairing flow. You need to extract yours from an app
-instance that's already paired with your Secomat.
+Use a standard Bluetooth Low Energy GATT tool such as **nRF Connect for Mobile on
+Android**, near your Secomat. The official app can remain installed and paired; no
+root access, app modification, or re-pairing is needed.
 
-The straightforward route (`adb backup`) doesn't work: the app's local
-`files/state.json` (which holds the token in plaintext) is fully backup-eligible per its
-manifest, but Android 12+ returns an **empty archive** for `adb backup` on any regular
-(non-debuggable) release-signed app, regardless of the `allowBackup` flag — this is a
-platform restriction, not something specific to this app.
+1. Enable Bluetooth, open nRF Connect, grant its requested Bluetooth/nearby-device
+   permissions, then scan for and connect to your Secomat.
+2. **Before reading the Claim Token**, use the connection menu's **Request MTU**
+   action. Request **247**, for example, and confirm that the negotiated **MTU is at
+   least 35** (`MTU >= 35`).
+3. Open GATT service `bbbbbbbb-1234-5678-abcd-06050403ff00`.
+4. Read characteristic `bbbbbbbb-1234-5678-abcd-06050403ff01` within that service.
+   Display/decode its value as **ASCII text** and copy all **32 ASCII characters** of
+   the Claim Token, not the hexadecimal representation. Then disconnect.
+5. Enter the Claim Token in Home Assistant's setup form. Home Assistant retrieves
+   the Secomat ID from the cloud response.
 
-What does work, without root:
-
-1. Download the official APK (e.g. via apkcombo/apkpure — package `ch.krueger.secomat`).
-2. Decode it with [`apktool`](https://apktool.org/), add `android:debuggable="true"` to
-   the `<application>` tag in the decoded manifest, rebuild with `apktool b`.
-3. Sign the rebuilt APK with any throwaway keystore (`zipalign` + `apksigner sign`,
-   both in the Android SDK build-tools).
-4. On your phone (USB debugging enabled): `adb uninstall ch.krueger.secomat` (this
-   destroys the app's current local data — expected), then `adb install` the patched
-   APK.
-5. Open the patched app and **re-pair with your physical Secomat** — same BLE claim
-   flow as your original setup, just needs to happen once more.
-6. Pull the fresh state: `adb shell run-as ch.krueger.secomat cat files/state.json`
-   (works without root because the app is now debuggable). The JSON has a
-   `claimedSecomats` map — copy `claimingToken` (**Claim Token**) and `secomatId`
-   (**Secomat ID**, e.g. `00.00000`). The Bluetooth address is not needed.
-7. Uninstall the patched app, reinstall the **real one from the Play Store** (sideloading
-   the original signed APK back over the patched one is blocked by Google Play
-   Protect verification — expected, don't fight it), and re-pair normally to restore
-   your regular working setup.
-
-Re-claiming didn't appear to invalidate anything account-wide in testing — it looks like
-each app install just gets its own independent token (the app has no login/account
-system at all), so your phone's regular app kept working fine afterward. Can't
-guarantee that's true for every account/device combination, so this does carry *some*
-small risk to your existing pairing — go in aware of that.
+**Why the MTU matters:** the Secomat's BLE server has a bug in its
+`ATT_READ_BLOB_REQ` offset handling. At the default **23-byte ATT MTU**, a long read
+repeats the first **22 characters** of the Claim Token instead of correctly fetching
+the remainder. Negotiating `MTU >= 35` before reading retrieves all 32 ASCII
+characters in one `ATT_READ_REQ`. If the value repeats or is incomplete, negotiate
+the larger MTU and read it again; do not use the broken default-MTU result.
 
 **Keep your Claim Token secret** — it grants access to monitor and control your Secomat.
 Enter it directly in Home Assistant's setup form below. No separate configuration file
@@ -102,16 +108,18 @@ directory, then restart Home Assistant to discover the integration.
 
 1. Open **Settings → Devices & services → Add Integration**.
 2. Search for **Krüger Secomat**.
-3. Enter your **Secomat ID** and **Claim Token**. Optionally enter a **Name**; the
-   default is **Secomat**. The Claim Token input is masked.
+3. Enter your **Claim Token**. Optionally enter a **Name**; the default is
+   **Secomat**. The Claim Token input is masked.
 4. Submit. Home Assistant validates the Claim Token against the Krüger cloud API
-   before adding the Secomat. A rejected Claim Token shows an authentication error;
+   before adding the Secomat and automatically discovers its **Secomat ID**.
+   A rejected Claim Token shows an authentication error;
    a network or server outage shows a connection error so you can retry later.
 
-For another Secomat, use **Add Entry** on the integration page and enter its own
-Secomat ID and Claim Token. Duplicate Secomat IDs are rejected. Each Secomat polls
-every 60 seconds and can be reloaded or removed independently without restarting
-Home Assistant.
+For another Secomat, use **Add Entry** on the integration page with its own Claim
+Token. Duplicate Secomat IDs are rejected automatically. Setup can also succeed
+while the Secomat is offline if the cloud still has its cached state and Secomat ID.
+Each Secomat polls every **30 seconds** and can be reloaded or removed independently
+without restarting Home Assistant.
 
 No extra Python packages needed — the integration uses Home Assistant's own shared
 `aiohttp` client session.
@@ -120,22 +128,15 @@ No extra Python packages needed — the integration uses Home Assistant's own sh
 
 In **Settings → Devices & services → Krüger Secomat**, open the Secomat entry's
 **⋮ → Reconfigure** menu. Enter the replacement **Claim Token** and submit. Home
-Assistant validates it, updates the existing entry, and reloads it automatically.
-The Secomat ID, entities, and history are unchanged.
+Assistant validates that it belongs to the **same Secomat ID**, updates the existing
+entry, and reloads it automatically. A token for a different Secomat is rejected
+without replacing the current token. The Secomat ID, entities, and history are
+unchanged.
 
-If polling rejects a Claim Token, Home Assistant automatically prompts you to
-**Reauthenticate**. Follow that prompt to enter a replacement Claim Token. Temporary
-cloud outages only mark the entities unavailable; polling recovers automatically
-when the service returns.
-
-### Moving from the legacy setup
-
-The old file-based configuration is no longer supported and is not imported
-automatically. Remove its legacy configuration, then add each Secomat through the UI
-using the same Secomat ID and Claim Token. Existing entity unique IDs are preserved;
-the default name **Secomat** also preserves the documented default entity IDs, so
-dashboards, automations, and long-term sensor statistics continue to use those
-identities.
+If polling or a control command rejects a Claim Token, Home Assistant automatically
+prompts you to **Reauthenticate**. Follow that prompt to enter a replacement Claim
+Token for the same Secomat. Temporary cloud outages only mark the entities
+unavailable; polling recovers automatically when the service returns.
 
 ## How it works
 
@@ -160,22 +161,20 @@ state server-side — e.g. it correctly rejects `ROOM_ON` with a `400` while a m
 drying cycle (`operating_mode` = 2, "Manual on") is already active, rather than
 silently corrupting its own state.
 
-BLE is used **only once**, during the app's own device-claim/pairing flow — this
-integration doesn't re-implement that handshake, it piggybacks on a token obtained via
-the app's normal pairing (see [Getting your Secomat ID and Claim Token](#getting-your-secomat-id-and-claim-token)
-above). At runtime there's no Bluetooth involved at all — this is genuinely a
-cloud-only device once paired, matching Krüger's own support documentation.
+Manual on sends `WASH_MANUAL_ON` with `{"prg_wash_starttime": 0}` to start immediately.
+After any successful control command, the integration waits **2 seconds** before
+requesting refreshed cloud state, giving the Secomat time to report the change.
+Rejected commands and network failures surface as Home Assistant service errors
+rather than silently reverting the control.
 
-## Known limitations
+Cloud responses distinguish live state (`src: "ws"`) from cached offline state
+(`src: "db"`). The Connectivity diagnostic exposes this as `source`, alongside the
+cloud's `age` timestamp, and gates availability of the other entities.
 
-- `target_humidity_level` and the app's `CHANGE`/`residual_moisture_target` argument
-  are exposed as read-only in this integration. The underlying enum ordinals
-  (`FinalHumidity`: LOWEST/LOW/MEDIUM/HIGH → 0-3) are confirmed from the decompiled
-  source, but which end means "extra dry" vs. "ironing damp" wasn't independently
-  verified against the real app UI, so no write control was built around an unverified
-  guess.
-- Only tested against one Secomat. Should work the same for any Secomat with
-  Bluetooth pairing/app support, but only one has actually been verified.
+BLE is needed only to [read your Claim Token](#getting-your-claim-token-over-ble)
+using a separate tool. The integration does not discover or read Secomats over
+Bluetooth at runtime, or provision their Wi-Fi; all runtime monitoring and control
+uses the cloud API.
 
 ## Development
 

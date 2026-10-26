@@ -23,8 +23,8 @@ async def async_setup_entry(
         [
             SecomatTemperatureSensor(coordinator),
             SecomatHumiditySensor(coordinator),
-            SecomatTargetHumiditySensor(coordinator),
-            SecomatFirmwareVersionSensor(coordinator),
+            SecomatDryingStateSensor(coordinator),
+            SecomatDryingStateRawSensor(coordinator),
         ]
     )
 
@@ -63,22 +63,30 @@ class SecomatHumiditySensor(SecomatSensorBase):
         return self.coordinator.data.get("payload", {}).get("humidity")
 
 
-class SecomatTargetHumiditySensor(SecomatSensorBase):
-    _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_name = "Target humidity level"
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _key = "target_humidity_level"
+class SecomatDryingStateSensor(SecomatSensorBase):
+    """The physical fan and compressor state, including previously unseen values."""
+
+    _attr_name = "Drying state"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = ["Idle", "Fan only", "Drying", "Unknown"]
+    _key = "drying_state"
 
     @property
-    def native_value(self):
-        return self.coordinator.data.get("payload", {}).get("target_humidity_level")
+    def native_value(self) -> str | None:
+        value = self.coordinator.data.get("payload", {}).get("secomat_state")
+        if value is None:
+            return None
+        return {0: "Idle", 2: "Fan only", 6: "Drying"}.get(value, "Unknown")
 
 
-class SecomatFirmwareVersionSensor(SecomatSensorBase):
-    _attr_name = "Firmware version"
+class SecomatDryingStateRawSensor(SecomatSensorBase):
+    """Discrete raw states for history, without numeric measurement statistics."""
+
+    _attr_name = "Drying state raw"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _key = "fw_version"
+    _attr_state_class = None
+    _key = "drying_state_raw"
 
     @property
-    def native_value(self):
-        return self.coordinator.data.get("payload", {}).get("fw_version")
+    def native_value(self) -> int | None:
+        return self.coordinator.data.get("payload", {}).get("secomat_state")

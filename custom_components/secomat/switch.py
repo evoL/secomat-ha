@@ -1,11 +1,15 @@
-"""Switch entities for Auto drying and Room Drying."""
+"""Switch entities for drying modes and Secomat settings."""
 from __future__ import annotations
 
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
+    ARG_HMI_BACKLIGHT,
+    ARG_WASH_LOCK_MOISTURE_TARGET,
+    CMD_CHANGE,
     CMD_OFF,
     CMD_ROOM_OFF,
     CMD_ROOM_ON,
@@ -20,7 +24,14 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: SecomatConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     coordinator = entry.runtime_data
-    async_add_entities([SecomatAutoDrySwitch(coordinator), SecomatRoomDryingSwitch(coordinator)])
+    async_add_entities(
+        [
+            SecomatAutoDrySwitch(coordinator),
+            SecomatRoomDryingSwitch(coordinator),
+            SecomatTargetHumidityLockSwitch(coordinator),
+            SecomatControlLightSwitch(coordinator),
+        ]
+    )
 
 
 class SecomatAutoDrySwitch(SecomatEntity, SwitchEntity):
@@ -66,3 +77,47 @@ class SecomatRoomDryingSwitch(SecomatEntity, SwitchEntity):
 
     async def async_turn_off(self, **kwargs) -> None:
         await self.coordinator.async_send_command(CMD_ROOM_OFF)
+
+
+class SecomatTargetHumidityLockSwitch(SecomatEntity, SwitchEntity):
+    """Keep the chosen Target Humidity Level across drying cycles."""
+
+    _attr_name = "Target humidity level lock"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_icon = "mdi:lock"
+
+    def __init__(self, coordinator: SecomatCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"secomat_{coordinator.secomat_id}_target_humidity_level_lock"
+
+    @property
+    def is_on(self) -> bool:
+        return bool(self.coordinator.data.get("payload", {}).get("target_humidity_level_locked"))
+
+    async def async_turn_on(self, **kwargs) -> None:
+        await self.coordinator.async_send_command(CMD_CHANGE, {ARG_WASH_LOCK_MOISTURE_TARGET: 1})
+
+    async def async_turn_off(self, **kwargs) -> None:
+        await self.coordinator.async_send_command(CMD_CHANGE, {ARG_WASH_LOCK_MOISTURE_TARGET: 0})
+
+
+class SecomatControlLightSwitch(SecomatEntity, SwitchEntity):
+    """Control the status light on the Secomat's physical panel."""
+
+    _attr_name = "Control light"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_icon = "mdi:lightbulb"
+
+    def __init__(self, coordinator: SecomatCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"secomat_{coordinator.secomat_id}_control_light"
+
+    @property
+    def is_on(self) -> bool:
+        return bool(self.coordinator.data.get("payload", {}).get("hmi_backlight"))
+
+    async def async_turn_on(self, **kwargs) -> None:
+        await self.coordinator.async_send_command(CMD_CHANGE, {ARG_HMI_BACKLIGHT: 1})
+
+    async def async_turn_off(self, **kwargs) -> None:
+        await self.coordinator.async_send_command(CMD_CHANGE, {ARG_HMI_BACKLIGHT: 0})

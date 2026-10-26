@@ -15,6 +15,10 @@ SECOMAT_STATE = {
     "eye_seeing_object": 1,
     "room_drying_enabled": 1,
     "operating_mode": 1,
+    "secomat_state": 6,
+    "error_list": [],
+    "target_humidity_level_locked": 1,
+    "hmi_backlight": 1,
 }
 
 
