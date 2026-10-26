@@ -1,13 +1,20 @@
 """Verify the integration through config entries, registries, states, and services."""
 
+import asyncio
 from datetime import timedelta
 
+import aiohttp
 import pytest
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.util import dt as dt_util
-from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    async_fire_time_changed,
+    async_fire_time_changed_exact,
+)
 
 from custom_components.secomat.const import DOMAIN
 
@@ -256,6 +263,7 @@ async def test_multiple_entries_are_independent(hass, config_entry, cloud_api, f
     assert hass.states.get("sensor.upstairs_temperature").state == "24"
 
 
+@pytest.mark.parametrize("status", [200, 204])
 @pytest.mark.parametrize(
     ("entity_id", "service", "extra", "command", "payload", "expected_state"),
     [
@@ -281,25 +289,140 @@ async def test_multiple_entries_are_independent(hass, config_entry, cloud_api, f
     ],
 )
 async def test_entity_commands(
-    hass, config_entry, cloud_api, entity_id, service, extra, command, payload, expected_state
+    hass, config_entry, cloud_api, freezer,
+    entity_id, service, extra, command, payload, expected_state, status,
 ):
-    """Switch and select services send the expected command and refresh state."""
+    """Every control waits two seconds before fetching and publishing its new state."""
+    cloud_api.clear_requests()
+    initial_payload = {
+        **SECOMAT_STATE, **{key: 0 if value else 1 for key, value in payload.items()}
+    }
+    cloud_api.get(PLC_URL, json=cloud_response(initial_payload))
+    config_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+    initial_state = hass.states.get(entity_id).state
+    assert initial_state != expected_state
+    cloud_api.clear_requests()
+    cloud_api.post(PLC_URL, status=status)
+    cloud_api.get(PLC_URL, json=cloud_response({**SECOMAT_STATE, **payload}))
+    service_task = asyncio.create_task(
+        hass.services.async_call(
+            entity_id.split(".")[0], service, {"entity_id": entity_id, **extra}, blocking=True
+        )
+    )
+    try:
+        # Let the service send its POST and schedule the delay without waiting for timers.
+        for _ in range(20):
+            await asyncio.sleep(0)
+        assert cloud_api.call_count == 1
+        assert cloud_api.mock_calls[0][0].lower() == "post"
+        expected_args = {"prg_wash_starttime": 0} if command == "WASH_MANUAL_ON" else {}
+        assert cloud_api.mock_calls[0][2] == {"command": command, "args": expected_args}
+        assert cloud_api.mock_calls[0][3]["claim-token"] == "old-token"
+        assert hass.states.get(entity_id).state == initial_state
+
+        freezer.tick(timedelta(seconds=1.9))
+        async_fire_time_changed_exact(hass, dt_util.utcnow())
+        for _ in range(20):
+            await asyncio.sleep(0)
+        assert cloud_api.call_count == 1
+        assert hass.states.get(entity_id).state == initial_state
+
+        freezer.tick(timedelta(seconds=0.1))
+        async_fire_time_changed_exact(hass, dt_util.utcnow())
+        await service_task
+        await hass.async_block_till_done()
+        assert [call[0].lower() for call in cloud_api.mock_calls] == ["post", "get"]
+        assert hass.states.get(entity_id).state == expected_state
+    finally:
+        service_task.cancel()
+        await asyncio.gather(service_task, return_exceptions=True)
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "service", "extra"),
+    [
+        ("select.secomat_power_mode", "select_option", {"option": "Off"}),
+        ("switch.secomat_auto_dry", "turn_off", {}),
+        ("switch.secomat_room_drying", "turn_off", {}),
+    ],
+)
+@pytest.mark.parametrize(
+    "response",
+    [
+        pytest.param({"status": 400}, id="bad-request"),
+        pytest.param({"status": 500}, id="server-error"),
+        pytest.param({"status": 503}, id="unavailable"),
+        pytest.param({"exc": aiohttp.ClientConnectionError("Connection lost")}, id="connection"),
+        pytest.param({"exc": TimeoutError("Command timed out")}, id="timeout"),
+    ],
+)
+async def test_failed_command_surfaces_service_error_without_refresh(
+    hass, config_entry, cloud_api, freezer, entity_id, service, extra, response
+):
+    """API and transport failures notify the user without changing state or starting reauth."""
+    config_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+    initial_state = hass.states.get(entity_id).state
+    cloud_api.clear_requests()
+    cloud_api.post(PLC_URL, **response)
+    cloud_api.get(
+        PLC_URL,
+        json=cloud_response({**SECOMAT_STATE, "operating_mode": 0, "room_drying_enabled": 0}),
+    )
+
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            entity_id.split(".")[0], service, {"entity_id": entity_id, **extra}, blocking=True
+        )
+    await hass.async_block_till_done()
+    assert not hass.config_entries.flow.async_progress()
+    assert [call[0].lower() for call in cloud_api.mock_calls] == ["post"]
+
+    freezer.tick(timedelta(seconds=3))
+    async_fire_time_changed_exact(hass, dt_util.utcnow())
+    await hass.async_block_till_done()
+    assert [call[0].lower() for call in cloud_api.mock_calls] == ["post"]
+    assert hass.states.get(entity_id).state == initial_state
+
+
+@pytest.mark.parametrize("status", [401, 403])
+@pytest.mark.parametrize(
+    ("entity_id", "service", "extra"),
+    [
+        ("select.secomat_power_mode", "select_option", {"option": "Manual on"}),
+        ("switch.secomat_auto_dry", "turn_off", {}),
+        ("switch.secomat_room_drying", "turn_off", {}),
+    ],
+)
+async def test_command_rejected_claim_token_starts_reauth_and_raises_service_error(
+    hass, config_entry, cloud_api, freezer, entity_id, service, extra, status
+):
+    """Command authentication failures prompt immediately, without waiting for the next poll."""
     config_entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()
     cloud_api.clear_requests()
-    cloud_api.post(PLC_URL, status=204)
-    cloud_api.get(PLC_URL, json=cloud_response({**SECOMAT_STATE, **payload}))
-    await hass.services.async_call(
-        entity_id.split(".")[0], service, {"entity_id": entity_id, **extra}, blocking=True
-    )
-    await hass.async_block_till_done()
+    cloud_api.post(PLC_URL, status=status)
+    cloud_api.get(PLC_URL, json=cloud_response())
 
-    assert cloud_api.mock_calls[0][0].lower() == "post"
-    assert cloud_api.mock_calls[0][2] == {"command": command, "args": {}}
-    assert cloud_api.mock_calls[0][3]["claim-token"] == "old-token"
-    assert cloud_api.call_count == 2
-    assert hass.states.get(entity_id).state == expected_state
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            entity_id.split(".")[0], service, {"entity_id": entity_id, **extra}, blocking=True
+        )
+    await hass.async_block_till_done()
+    [flow] = hass.config_entries.flow.async_progress()
+    assert flow["context"]["source"] == "reauth"
+    assert flow["context"]["entry_id"] == config_entry.entry_id
+    assert config_entry.data["claim_token"] == "old-token"
+    assert [call[0].lower() for call in cloud_api.mock_calls] == ["post"]
+
+    freezer.tick(timedelta(seconds=3))
+    async_fire_time_changed_exact(hass, dt_util.utcnow())
+    await hass.async_block_till_done()
+    assert [call[0].lower() for call in cloud_api.mock_calls] == ["post"]
 
 
 async def test_add_offline_secomat_and_recover_on_poll(hass, aioclient_mock, freezer):

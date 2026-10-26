@@ -7,8 +7,7 @@ from homeassistant.components.select import SelectEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .api import SecomatApiError
-from .const import POWER_MODE_NAMES, POWER_MODE_TO_COMMAND
+from .const import ARG_WASH_START_TIME, POWER_MODE_NAMES, POWER_MODE_ON, POWER_MODE_TO_COMMAND
 from .coordinator import SecomatConfigEntry, SecomatCoordinator
 from .entity import SecomatEntity
 
@@ -43,9 +42,5 @@ class SecomatPowerModeSelect(SecomatEntity, SelectEntity):
             _LOGGER.error("Unknown secomat power mode option: %s", option)
             return
         command = POWER_MODE_TO_COMMAND[mode]
-        try:
-            await self.coordinator.client.async_send_command(command)
-        except SecomatApiError as err:
-            _LOGGER.error("Failed to set secomat power mode to %s: %s", option, err)
-            return
-        await self.coordinator.async_request_refresh()
+        args = {ARG_WASH_START_TIME: 0} if mode == POWER_MODE_ON else None
+        await self.coordinator.async_send_command(command, args)
