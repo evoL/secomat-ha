@@ -19,8 +19,9 @@ async def async_setup_entry(
     async_add_entities(
         [
             SecomatLaundryDetectedSensor(coordinator),
-            SecomatRoomDryingSensor(coordinator),
             SecomatConnectivitySensor(coordinator),
+            SecomatDryingSensor(coordinator),
+            SecomatProblemSensor(coordinator),
         ]
     )
 
@@ -48,16 +49,34 @@ class SecomatLaundryDetectedSensor(SecomatBinarySensorBase):
         return bool(value) if value is not None else None
 
 
-class SecomatRoomDryingSensor(SecomatBinarySensorBase):
-    """Whether 24h room-drying mode is currently enabled (mirrors the switch)."""
+class SecomatDryingSensor(SecomatBinarySensorBase):
+    """Whether the Secomat is physically running, rather than merely armed."""
 
-    _attr_name = "Room drying enabled"
-    _attr_icon = "mdi:fan"
-    _key = "room_drying_enabled"
+    _attr_name = "Drying"
+    _attr_device_class = BinarySensorDeviceClass.RUNNING
+    _key = "drying"
 
     @property
-    def is_on(self):
-        return bool(self.coordinator.data.get("payload", {}).get("room_drying_enabled"))
+    def is_on(self) -> bool | None:
+        value = self.coordinator.data.get("payload", {}).get("secomat_state")
+        return value > 0 if value is not None else None
+
+
+class SecomatProblemSensor(SecomatBinarySensorBase):
+    """Active warnings and errors reported by the Secomat."""
+
+    _attr_name = "Problem"
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _key = "problem"
+
+    @property
+    def is_on(self) -> bool:
+        return bool(self.coordinator.data.get("payload", {}).get("error_list"))
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {"errors": self.coordinator.data.get("payload", {}).get("error_list", [])}
 
 
 class SecomatConnectivitySensor(SecomatBinarySensorBase):

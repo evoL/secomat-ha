@@ -23,21 +23,59 @@ from .conftest import PLC_URL, SECOMAT_STATE, cloud_response
 EXPECTED_ENTITIES = {
     "sensor.secomat_temperature": ("temperature", "Temperature", "21.5"),
     "sensor.secomat_humidity": ("humidity", "Humidity", "48"),
-    "sensor.secomat_target_humidity_level": ("target_humidity_level", "Target humidity level", "2"),
-    "sensor.secomat_firmware_version": ("fw_version", "Firmware version", "1.2.3"),
+    "sensor.secomat_drying_state": ("drying_state", "Drying state", "Drying"),
+    "sensor.secomat_drying_state_raw": ("drying_state_raw", "Drying state raw", "6"),
+    "binary_sensor.secomat_drying": ("drying", "Drying", "on"),
     "binary_sensor.secomat_laundry_detected": ("eye_seeing_object", "Laundry detected", "on"),
-    "binary_sensor.secomat_room_drying_enabled": (
-        "room_drying_enabled", "Room drying enabled", "on"
-    ),
+    "binary_sensor.secomat_problem": ("problem", "Problem", "off"),
     "binary_sensor.secomat_connectivity": ("connectivity", "Connectivity", "on"),
     "switch.secomat_auto_dry": ("auto_dry_switch", "Auto dry", "on"),
     "switch.secomat_room_drying": ("room_drying_switch", "Room drying", "on"),
     "select.secomat_power_mode": ("power_mode", "Power mode", "Auto"),
+    "select.secomat_target_humidity_level": (
+        "target_humidity_level", "Target humidity level", "Medium"
+    ),
+    "switch.secomat_target_humidity_level_lock": (
+        "target_humidity_level_lock", "Target humidity level lock", "on"
+    ),
+    "switch.secomat_control_light": ("control_light", "Control light", "on"),
+}
+
+EXPECTED_ATTRIBUTES = {
+    "temperature": {
+        "device_class": "temperature", "unit_of_measurement": "°C", "state_class": "measurement"
+    },
+    "humidity": {
+        "device_class": "humidity", "unit_of_measurement": "%", "state_class": "measurement"
+    },
+    "drying_state": {
+        "device_class": "enum", "options": ["Idle", "Fan only", "Drying", "Unknown"]
+    },
+    "drying": {"device_class": "running"},
+    "problem": {"device_class": "problem"},
+    "connectivity": {"device_class": "connectivity"},
+    "power_mode": {"options": ["Off", "Auto", "Manual on"]},
+    "target_humidity_level": {"options": ["Very dry", "Dry", "Medium", "Humid"]},
+}
+EXPECTED_CATEGORIES = {
+    "drying_state_raw": "diagnostic",
+    "problem": "diagnostic",
+    "connectivity": "diagnostic",
+    "target_humidity_level_lock": "config",
+    "control_light": "config",
+}
+EXPECTED_ICONS = {
+    "eye_seeing_object": "mdi:tshirt-crew",
+    "power_mode": "mdi:tumble-dryer",
+    "auto_dry_switch": "mdi:tumble-dryer",
+    "room_drying_switch": "mdi:fan",
+    "target_humidity_level_lock": "mdi:lock",
+    "control_light": "mdi:lightbulb",
 }
 
 
-async def test_setup_registers_device_and_ten_entities(hass, config_entry, cloud_api):
-    """One Secomat groups all entities without changing their existing identities."""
+async def test_setup_registers_device_and_fourteen_entities(hass, config_entry, cloud_api):
+    """One Secomat exposes exactly the complete entity model, with no legacy duplicates."""
     config_entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()
@@ -55,43 +93,29 @@ async def test_setup_registers_device_and_ten_entities(hass, config_entry, cloud
 
     entity_registry = er.async_get(hass)
     entities = er.async_entries_for_config_entry(entity_registry, config_entry.entry_id)
+    assert len(entities) == 14
     assert {entity.entity_id for entity in entities} == set(EXPECTED_ENTITIES)
     for entity_id, (key, relative_name, state) in EXPECTED_ENTITIES.items():
         entity = entity_registry.async_get(entity_id)
         assert entity.device_id == device.id
         assert entity.unique_id == f"secomat_00.00000_{key}"
         assert entity.original_name == relative_name
-        assert hass.states.get(entity_id).state == state
-        if key in {"target_humidity_level", "fw_version", "connectivity"}:
-            assert entity.entity_category.value == "diagnostic"
+        assert entity.entity_category == EXPECTED_CATEGORIES.get(key)
+        assert entity.original_icon == EXPECTED_ICONS.get(key)
+        entity_state = hass.states.get(entity_id)
+        assert entity_state.state == state
+        for attribute in ("device_class", "unit_of_measurement", "state_class", "options"):
+            assert entity_state.attributes.get(attribute) == EXPECTED_ATTRIBUTES.get(key, {}).get(
+                attribute
+            ), (entity_id, attribute)
+        if key in EXPECTED_ICONS:
+            assert entity_state.attributes["icon"] == EXPECTED_ICONS[key]
 
     connectivity = hass.states.get("binary_sensor.secomat_connectivity")
     assert connectivity.attributes["device_class"] == "connectivity"
     assert connectivity.attributes["source"] == "ws"
     assert connectivity.attributes["age"] == "2026-10-26T12:00:00Z"
-
-
-async def test_legacy_entity_registry_records_are_reused(hass, config_entry, cloud_api):
-    """Moving to UI setup retains entity IDs, including a user-renamed entity."""
-    registry = er.async_get(hass)
-    legacy_entities = {}
-    for entity_id, (key, _, _) in EXPECTED_ENTITIES.items():
-        domain, suggested_id = entity_id.split(".")
-        if key == "temperature":
-            suggested_id = "laundry_temperature"
-        entity = registry.async_get_or_create(
-            domain, DOMAIN, f"secomat_00.00000_{key}", suggested_object_id=suggested_id
-        )
-        legacy_entities[entity.entity_id] = entity.id
-
-    config_entry.add_to_hass(hass)
-    assert await hass.config_entries.async_setup(config_entry.entry_id)
-    await hass.async_block_till_done()
-    entities = er.async_entries_for_config_entry(registry, config_entry.entry_id)
-    assert {entity.entity_id: entity.id for entity in entities} == legacy_entities
-    assert hass.states.get("sensor.laundry_temperature").state == "21.5"
-    assert hass.states.get("sensor.secomat_temperature") is None
-    assert all(entity.device_id is not None for entity in entities)
+    assert hass.states.get("binary_sensor.secomat_problem").attributes["errors"] == []
 
 
 async def test_remove_entry_cleans_up_device_and_entities(hass, config_entry, cloud_api, freezer):
@@ -196,8 +220,7 @@ async def test_firmware_version_tracks_latest_poll(hass, config_entry, cloud_api
     async_fire_time_changed(hass, dt_util.utcnow())
     await hass.async_block_till_done(wait_background_tasks=True)
 
-    expected_state = "2.0.0" if source == "ws" else "unavailable"
-    assert hass.states.get("sensor.secomat_firmware_version").state == expected_state
+    assert hass.states.get("sensor.secomat_firmware_version") is None
     device = dr.async_entries_for_config_entry(dr.async_get(hass), config_entry.entry_id)[0]
     assert device.sw_version == "2.0.0"
 
@@ -265,32 +288,67 @@ async def test_multiple_entries_are_independent(hass, config_entry, cloud_api, f
 
 @pytest.mark.parametrize("status", [200, 204])
 @pytest.mark.parametrize(
-    ("entity_id", "service", "extra", "command", "payload", "expected_state"),
+    ("entity_id", "service", "extra", "command", "args", "payload", "expected_state"),
     [
-        ("switch.secomat_auto_dry", "turn_on", {}, "WASH_AUTO", {"operating_mode": 1}, "on"),
-        ("switch.secomat_auto_dry", "turn_off", {}, "OFF", {"operating_mode": 0}, "off"),
-        ("switch.secomat_room_drying", "turn_on", {}, "ROOM_ON", {"room_drying_enabled": 1}, "on"),
+        ("switch.secomat_auto_dry", "turn_on", {}, "WASH_AUTO", {}, {"operating_mode": 1}, "on"),
+        ("switch.secomat_auto_dry", "turn_off", {}, "OFF", {}, {"operating_mode": 0}, "off"),
         (
-            "switch.secomat_room_drying", "turn_off", {}, "ROOM_OFF",
+            "switch.secomat_room_drying", "turn_on", {}, "ROOM_ON", {},
+            {"room_drying_enabled": 1}, "on",
+        ),
+        (
+            "switch.secomat_room_drying", "turn_off", {}, "ROOM_OFF", {},
             {"room_drying_enabled": 0}, "off",
         ),
         (
             "select.secomat_power_mode", "select_option", {"option": "Off"},
-            "OFF", {"operating_mode": 0}, "Off",
+            "OFF", {}, {"operating_mode": 0}, "Off",
         ),
         (
             "select.secomat_power_mode", "select_option", {"option": "Auto"},
-            "WASH_AUTO", {"operating_mode": 1}, "Auto",
+            "WASH_AUTO", {}, {"operating_mode": 1}, "Auto",
         ),
         (
             "select.secomat_power_mode", "select_option", {"option": "Manual on"},
-            "WASH_MANUAL_ON", {"operating_mode": 2}, "Manual on",
+            "WASH_MANUAL_ON", {"prg_wash_starttime": 0}, {"operating_mode": 2}, "Manual on",
+        ),
+        (
+            "select.secomat_target_humidity_level", "select_option", {"option": "Very dry"},
+            "CHANGE", {"residual_moisture_target": 0}, {"target_humidity_level": 0}, "Very dry",
+        ),
+        (
+            "select.secomat_target_humidity_level", "select_option", {"option": "Dry"},
+            "CHANGE", {"residual_moisture_target": 1}, {"target_humidity_level": 1}, "Dry",
+        ),
+        (
+            "select.secomat_target_humidity_level", "select_option", {"option": "Medium"},
+            "CHANGE", {"residual_moisture_target": 2}, {"target_humidity_level": 2}, "Medium",
+        ),
+        (
+            "select.secomat_target_humidity_level", "select_option", {"option": "Humid"},
+            "CHANGE", {"residual_moisture_target": 3}, {"target_humidity_level": 3}, "Humid",
+        ),
+        (
+            "switch.secomat_target_humidity_level_lock", "turn_on", {}, "CHANGE",
+            {"lock_residual_moisture_target": 1}, {"target_humidity_level_locked": 1}, "on",
+        ),
+        (
+            "switch.secomat_target_humidity_level_lock", "turn_off", {}, "CHANGE",
+            {"lock_residual_moisture_target": 0}, {"target_humidity_level_locked": 0}, "off",
+        ),
+        (
+            "switch.secomat_control_light", "turn_on", {}, "CHANGE",
+            {"hmi_backlight": 1}, {"hmi_backlight": 1}, "on",
+        ),
+        (
+            "switch.secomat_control_light", "turn_off", {}, "CHANGE",
+            {"hmi_backlight": 0}, {"hmi_backlight": 0}, "off",
         ),
     ],
 )
 async def test_entity_commands(
     hass, config_entry, cloud_api, freezer,
-    entity_id, service, extra, command, payload, expected_state, status,
+    entity_id, service, extra, command, args, payload, expected_state, status,
 ):
     """Every control waits two seconds before fetching and publishing its new state."""
     cloud_api.clear_requests()
@@ -317,8 +375,7 @@ async def test_entity_commands(
             await asyncio.sleep(0)
         assert cloud_api.call_count == 1
         assert cloud_api.mock_calls[0][0].lower() == "post"
-        expected_args = {"prg_wash_starttime": 0} if command == "WASH_MANUAL_ON" else {}
-        assert cloud_api.mock_calls[0][2] == {"command": command, "args": expected_args}
+        assert cloud_api.mock_calls[0][2] == {"command": command, "args": args}
         assert cloud_api.mock_calls[0][3]["claim-token"] == "old-token"
         assert hass.states.get(entity_id).state == initial_state
 
@@ -344,8 +401,11 @@ async def test_entity_commands(
     ("entity_id", "service", "extra"),
     [
         ("select.secomat_power_mode", "select_option", {"option": "Off"}),
+        ("select.secomat_target_humidity_level", "select_option", {"option": "Very dry"}),
         ("switch.secomat_auto_dry", "turn_off", {}),
         ("switch.secomat_room_drying", "turn_off", {}),
+        ("switch.secomat_target_humidity_level_lock", "turn_off", {}),
+        ("switch.secomat_control_light", "turn_off", {}),
     ],
 )
 @pytest.mark.parametrize(
@@ -393,8 +453,11 @@ async def test_failed_command_surfaces_service_error_without_refresh(
     ("entity_id", "service", "extra"),
     [
         ("select.secomat_power_mode", "select_option", {"option": "Manual on"}),
+        ("select.secomat_target_humidity_level", "select_option", {"option": "Very dry"}),
         ("switch.secomat_auto_dry", "turn_off", {}),
         ("switch.secomat_room_drying", "turn_off", {}),
+        ("switch.secomat_target_humidity_level_lock", "turn_off", {}),
+        ("switch.secomat_control_light", "turn_off", {}),
     ],
 )
 async def test_command_rejected_claim_token_starts_reauth_and_raises_service_error(
