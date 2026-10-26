@@ -1,13 +1,10 @@
 """Switch entities for Auto drying and Room Drying."""
 from __future__ import annotations
 
-import logging
-
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .api import SecomatApiError
 from .const import (
     CMD_OFF,
     CMD_ROOM_OFF,
@@ -17,8 +14,6 @@ from .const import (
 )
 from .coordinator import SecomatConfigEntry, SecomatCoordinator
 from .entity import SecomatEntity
-
-_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
@@ -48,18 +43,10 @@ class SecomatAutoDrySwitch(SecomatEntity, SwitchEntity):
         return self.coordinator.data.get("payload", {}).get("operating_mode") == POWER_MODE_READY
 
     async def async_turn_on(self, **kwargs) -> None:
-        await self._send(CMD_WASH_AUTO)
+        await self.coordinator.async_send_command(CMD_WASH_AUTO)
 
     async def async_turn_off(self, **kwargs) -> None:
-        await self._send(CMD_OFF)
-
-    async def _send(self, command: str) -> None:
-        try:
-            await self.coordinator.client.async_send_command(command)
-        except SecomatApiError as err:
-            _LOGGER.error("Failed to send secomat command %s: %s", command, err)
-            return
-        await self.coordinator.async_request_refresh()
+        await self.coordinator.async_send_command(CMD_OFF)
 
 
 class SecomatRoomDryingSwitch(SecomatEntity, SwitchEntity):
@@ -75,15 +62,7 @@ class SecomatRoomDryingSwitch(SecomatEntity, SwitchEntity):
         return bool(self.coordinator.data.get("payload", {}).get("room_drying_enabled"))
 
     async def async_turn_on(self, **kwargs) -> None:
-        await self._send(CMD_ROOM_ON)
+        await self.coordinator.async_send_command(CMD_ROOM_ON)
 
     async def async_turn_off(self, **kwargs) -> None:
-        await self._send(CMD_ROOM_OFF)
-
-    async def _send(self, command: str) -> None:
-        try:
-            await self.coordinator.client.async_send_command(command)
-        except SecomatApiError as err:
-            _LOGGER.error("Failed to send secomat command %s: %s", command, err)
-            return
-        await self.coordinator.async_request_refresh()
+        await self.coordinator.async_send_command(CMD_ROOM_OFF)

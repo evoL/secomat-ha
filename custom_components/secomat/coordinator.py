@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import timedelta
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -57,6 +58,20 @@ class SecomatCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             serial_number=self.secomat_id,
             sw_version=self.data.get("payload", {}).get("fw_version"),
         )
+
+    async def async_send_command(
+        self, command: str, args: dict[str, int] | None = None
+    ) -> None:
+        """Send a command and allow the Secomat to report its new state before refreshing."""
+        try:
+            await self.client.async_send_command(command, args)
+        except SecomatAuthError as err:
+            self.config_entry.async_start_reauth(self.hass)
+            raise HomeAssistantError("The Secomat Claim Token was rejected") from err
+        except SecomatApiError as err:
+            raise HomeAssistantError(f"Failed to send Secomat command {command}: {err}") from err
+        await asyncio.sleep(2)
+        await self.async_request_refresh()
 
     async def _async_update_data(self) -> dict[str, Any]:
         try:
