@@ -10,33 +10,26 @@ from homeassistant.const import PERCENTAGE, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from . import SecomatCoordinator
-from .const import DOMAIN
+from .coordinator import SecomatConfigEntry, SecomatCoordinator
+from .entity import SecomatEntity
 
 
-async def async_setup_platform(
-    hass: HomeAssistant, config, async_add_entities: AddEntitiesCallback, discovery_info=None
+async def async_setup_entry(
+    hass: HomeAssistant, entry: SecomatConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    if discovery_info is None:
-        return
-    entities: list[SensorEntity] = []
-    for coordinator in hass.data.get(DOMAIN, {}).values():
-        entities.extend(
-            [
-                SecomatTemperatureSensor(coordinator),
-                SecomatHumiditySensor(coordinator),
-                SecomatTargetHumiditySensor(coordinator),
-                SecomatFirmwareVersionSensor(coordinator),
-            ]
-        )
-    async_add_entities(entities)
+    coordinator = entry.runtime_data
+    async_add_entities(
+        [
+            SecomatTemperatureSensor(coordinator),
+            SecomatHumiditySensor(coordinator),
+            SecomatTargetHumiditySensor(coordinator),
+            SecomatFirmwareVersionSensor(coordinator),
+        ]
+    )
 
 
-class SecomatSensorBase(CoordinatorEntity[SecomatCoordinator], SensorEntity):
-    _attr_has_entity_name = True
-
+class SecomatSensorBase(SecomatEntity, SensorEntity):
     def __init__(self, coordinator: SecomatCoordinator) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"secomat_{coordinator.secomat_id}_{self._key}"
@@ -50,7 +43,7 @@ class SecomatTemperatureSensor(SecomatSensorBase):
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
     _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_name = "Secomat temperature"
+    _attr_name = "Temperature"
     _key = "temperature"
 
     @property
@@ -62,7 +55,7 @@ class SecomatHumiditySensor(SecomatSensorBase):
     _attr_device_class = SensorDeviceClass.HUMIDITY
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_name = "Secomat humidity"
+    _attr_name = "Humidity"
     _key = "humidity"
 
     @property
@@ -72,7 +65,7 @@ class SecomatHumiditySensor(SecomatSensorBase):
 
 class SecomatTargetHumiditySensor(SecomatSensorBase):
     _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_name = "Secomat target humidity level"
+    _attr_name = "Target humidity level"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _key = "target_humidity_level"
 
@@ -82,7 +75,7 @@ class SecomatTargetHumiditySensor(SecomatSensorBase):
 
 
 class SecomatFirmwareVersionSensor(SecomatSensorBase):
-    _attr_name = "Secomat firmware version"
+    _attr_name = "Firmware version"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _key = "fw_version"
 

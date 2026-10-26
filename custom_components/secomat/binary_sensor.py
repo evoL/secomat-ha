@@ -4,31 +4,21 @@ from __future__ import annotations
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from . import SecomatCoordinator
-from .const import DOMAIN
+from .coordinator import SecomatConfigEntry, SecomatCoordinator
+from .entity import SecomatEntity
 
 
-async def async_setup_platform(
-    hass: HomeAssistant, config, async_add_entities: AddEntitiesCallback, discovery_info=None
+async def async_setup_entry(
+    hass: HomeAssistant, entry: SecomatConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    if discovery_info is None:
-        return
-    entities: list[BinarySensorEntity] = []
-    for coordinator in hass.data.get(DOMAIN, {}).values():
-        entities.extend(
-            [
-                SecomatLaundryDetectedSensor(coordinator),
-                SecomatRoomDryingSensor(coordinator),
-            ]
-        )
-    async_add_entities(entities)
+    coordinator = entry.runtime_data
+    async_add_entities(
+        [SecomatLaundryDetectedSensor(coordinator), SecomatRoomDryingSensor(coordinator)]
+    )
 
 
-class SecomatBinarySensorBase(CoordinatorEntity[SecomatCoordinator], BinarySensorEntity):
-    _attr_has_entity_name = True
-
+class SecomatBinarySensorBase(SecomatEntity, BinarySensorEntity):
     def __init__(self, coordinator: SecomatCoordinator) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"secomat_{coordinator.secomat_id}_{self._key}"
@@ -41,7 +31,7 @@ class SecomatBinarySensorBase(CoordinatorEntity[SecomatCoordinator], BinarySenso
 class SecomatLaundryDetectedSensor(SecomatBinarySensorBase):
     """The optical 'eye' sensor that detects hung laundry."""
 
-    _attr_name = "Secomat laundry detected"
+    _attr_name = "Laundry detected"
     _attr_icon = "mdi:tshirt-crew"
     _key = "eye_seeing_object"
 
@@ -54,7 +44,7 @@ class SecomatLaundryDetectedSensor(SecomatBinarySensorBase):
 class SecomatRoomDryingSensor(SecomatBinarySensorBase):
     """Whether 24h room-drying mode is currently enabled (mirrors the switch)."""
 
-    _attr_name = "Secomat room drying enabled"
+    _attr_name = "Room drying enabled"
     _attr_icon = "mdi:fan"
     _key = "room_drying_enabled"
 

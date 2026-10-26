@@ -9,18 +9,19 @@ via the app's own BLE pairing/claim flow) and `api` (constant, "1").
 """
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 import aiohttp
 
 from .const import DEFAULT_API_BASE_URL
 
-_LOGGER = logging.getLogger(__name__)
-
 
 class SecomatApiError(Exception):
     """Raised when the Secomat API returns an error or is unreachable."""
+
+
+class SecomatAuthError(SecomatApiError):
+    """Raised when the cloud API rejects the Claim Token."""
 
 
 class SecomatClient:
@@ -29,11 +30,11 @@ class SecomatClient:
     def __init__(
         self,
         session: aiohttp.ClientSession,
-        claiming_token: str,
+        claim_token: str,
         base_url: str = DEFAULT_API_BASE_URL,
     ) -> None:
         self._session = session
-        self._token = claiming_token
+        self._token = claim_token
         self._base_url = base_url.rstrip("/") + "/"
 
     @property
@@ -54,11 +55,13 @@ class SecomatClient:
             async with self._session.get(
                 url, headers=self._headers, timeout=aiohttp.ClientTimeout(total=15)
             ) as resp:
+                if resp.status in (401, 403):
+                    raise SecomatAuthError(f"GET plc failed: HTTP {resp.status}")
                 if resp.status != 200:
                     text = await resp.text()
                     raise SecomatApiError(f"GET plc failed: HTTP {resp.status}: {text}")
                 data = await resp.json()
-        except aiohttp.ClientError as err:
+        except (aiohttp.ClientError, TimeoutError) as err:
             raise SecomatApiError(f"GET plc failed: {err}") from err
         return data.get("payload", {})
 
@@ -76,10 +79,12 @@ class SecomatClient:
                 json=body,
                 timeout=aiohttp.ClientTimeout(total=15),
             ) as resp:
+                if resp.status in (401, 403):
+                    raise SecomatAuthError(f"POST plc failed: HTTP {resp.status}")
                 if resp.status not in (200, 204):
                     text = await resp.text()
                     raise SecomatApiError(
                         f"POST plc {command} failed: HTTP {resp.status}: {text}"
                     )
-        except aiohttp.ClientError as err:
+        except (aiohttp.ClientError, TimeoutError) as err:
             raise SecomatApiError(f"POST plc {command} failed: {err}") from err

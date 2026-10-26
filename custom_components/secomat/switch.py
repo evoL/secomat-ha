@@ -1,4 +1,4 @@
-"""Switch entity for the Secomat's 24h room-drying mode."""
+"""Switch entities for Auto drying and Room Drying."""
 from __future__ import annotations
 
 import logging
@@ -6,35 +6,29 @@ import logging
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from . import SecomatCoordinator
 from .api import SecomatApiError
 from .const import (
     CMD_OFF,
     CMD_ROOM_OFF,
     CMD_ROOM_ON,
     CMD_WASH_AUTO,
-    DOMAIN,
     POWER_MODE_READY,
 )
+from .coordinator import SecomatConfigEntry, SecomatCoordinator
+from .entity import SecomatEntity
 
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_platform(
-    hass: HomeAssistant, config, async_add_entities: AddEntitiesCallback, discovery_info=None
+async def async_setup_entry(
+    hass: HomeAssistant, entry: SecomatConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    if discovery_info is None:
-        return
-    entities = []
-    for coordinator in hass.data.get(DOMAIN, {}).values():
-        entities.append(SecomatAutoDrySwitch(coordinator))
-        entities.append(SecomatRoomDryingSwitch(coordinator))
-    async_add_entities(entities)
+    coordinator = entry.runtime_data
+    async_add_entities([SecomatAutoDrySwitch(coordinator), SecomatRoomDryingSwitch(coordinator)])
 
 
-class SecomatAutoDrySwitch(CoordinatorEntity[SecomatCoordinator], SwitchEntity):
+class SecomatAutoDrySwitch(SecomatEntity, SwitchEntity):
     """One-tap control for the secomat's 'Auto' drying mode (READY).
 
     On = Auto (the app's smart start-stop mode: waits for laundry, dries it
@@ -42,8 +36,7 @@ class SecomatAutoDrySwitch(CoordinatorEntity[SecomatCoordinator], SwitchEntity):
     forced start) - that's the physical panel's override, not exposed here.
     """
 
-    _attr_has_entity_name = True
-    _attr_name = "Secomat auto dry"
+    _attr_name = "Auto dry"
     _attr_icon = "mdi:tumble-dryer"
 
     def __init__(self, coordinator: SecomatCoordinator) -> None:
@@ -69,9 +62,8 @@ class SecomatAutoDrySwitch(CoordinatorEntity[SecomatCoordinator], SwitchEntity):
         await self.coordinator.async_request_refresh()
 
 
-class SecomatRoomDryingSwitch(CoordinatorEntity[SecomatCoordinator], SwitchEntity):
-    _attr_has_entity_name = True
-    _attr_name = "Secomat room drying"
+class SecomatRoomDryingSwitch(SecomatEntity, SwitchEntity):
+    _attr_name = "Room drying"
     _attr_icon = "mdi:fan"
 
     def __init__(self, coordinator: SecomatCoordinator) -> None:

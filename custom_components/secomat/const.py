@@ -5,8 +5,9 @@ DOMAIN = "secomat"
 DEFAULT_API_BASE_URL = "https://seco.krueger.ch:8080/app1/v1/"
 DEFAULT_SCAN_INTERVAL = 60  # seconds
 
-CONF_CREDENTIALS_FILE = "credentials_file"
-CONF_SCAN_INTERVAL = "scan_interval"
+DEFAULT_NAME = "Secomat"
+CONF_SECOMAT_ID = "secomat_id"
+CONF_CLAIM_TOKEN = "claim_token"
 
 # ch.krueger.secomat.network.SecomatCommand
 CMD_OFF = "OFF"

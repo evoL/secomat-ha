@@ -2,7 +2,7 @@
   "domain": "secomat",
   "name": "Krüger Secomat",
   "codeowners": ["@evoL"],
-  "config_flow": false,
+  "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/evoL/secomat-ha",
   "iot_class": "cloud_polling",
