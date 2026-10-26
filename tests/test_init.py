@@ -11,7 +11,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry, async_
 
 from custom_components.secomat.const import DOMAIN
 
-from .conftest import PLC_URL, SECOMAT_STATE
+from .conftest import PLC_URL, SECOMAT_STATE, cloud_response
 
 EXPECTED_ENTITIES = {
     "sensor.secomat_temperature": ("temperature", "Temperature", "21.5"),
@@ -22,13 +22,14 @@ EXPECTED_ENTITIES = {
     "binary_sensor.secomat_room_drying_enabled": (
         "room_drying_enabled", "Room drying enabled", "on"
     ),
+    "binary_sensor.secomat_connectivity": ("connectivity", "Connectivity", "on"),
     "switch.secomat_auto_dry": ("auto_dry_switch", "Auto dry", "on"),
     "switch.secomat_room_drying": ("room_drying_switch", "Room drying", "on"),
     "select.secomat_power_mode": ("power_mode", "Power mode", "Auto"),
 }
 
 
-async def test_setup_registers_device_and_nine_entities(hass, config_entry, cloud_api):
+async def test_setup_registers_device_and_ten_entities(hass, config_entry, cloud_api):
     """One Secomat groups all entities without changing their existing identities."""
     config_entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(config_entry.entry_id)
@@ -54,8 +55,13 @@ async def test_setup_registers_device_and_nine_entities(hass, config_entry, clou
         assert entity.unique_id == f"secomat_00.00000_{key}"
         assert entity.original_name == relative_name
         assert hass.states.get(entity_id).state == state
-        if key in {"target_humidity_level", "fw_version"}:
+        if key in {"target_humidity_level", "fw_version", "connectivity"}:
             assert entity.entity_category.value == "diagnostic"
+
+    connectivity = hass.states.get("binary_sensor.secomat_connectivity")
+    assert connectivity.attributes["device_class"] == "connectivity"
+    assert connectivity.attributes["source"] == "ws"
+    assert connectivity.attributes["age"] == "2026-10-26T12:00:00Z"
 
 
 async def test_legacy_entity_registry_records_are_reused(hass, config_entry, cloud_api):
@@ -120,34 +126,39 @@ async def test_first_refresh_failure(hass, config_entry, aioclient_mock, status)
 
 
 @pytest.mark.parametrize("status", [401, 403, 503])
-async def test_polling_failure_and_recovery(hass, config_entry, cloud_api, freezer, status):
+@pytest.mark.parametrize("initial_source", ["ws", "db"])
+@pytest.mark.parametrize("recovery_source", ["ws", "db"])
+async def test_polling_failure_and_recovery(
+    hass, config_entry, aioclient_mock, freezer, status, initial_source, recovery_source
+):
     """Only rejected Claim Tokens start reauth; transient outages recover on the next poll."""
+    cloud_api = aioclient_mock
+    cloud_api.get(PLC_URL, json=cloud_response(source=initial_source))
     config_entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()
     cloud_api.clear_requests()
     cloud_api.get(PLC_URL, status=status)
 
-    freezer.tick(timedelta(seconds=61))
+    freezer.tick(timedelta(seconds=31))
     async_fire_time_changed(hass, dt_util.utcnow())
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert cloud_api.call_count == 1
     assert all(hass.states.get(entity_id).state == "unavailable" for entity_id in EXPECTED_ENTITIES)
 
     if status == 503:
         assert not hass.config_entries.flow.async_progress()
         cloud_api.clear_requests()
-        cloud_api.get(PLC_URL, json={"payload": SECOMAT_STATE})
-        freezer.tick(timedelta(seconds=61))
+        cloud_api.get(PLC_URL, json=cloud_response(source=recovery_source))
+        freezer.tick(timedelta(seconds=31))
         async_fire_time_changed(hass, dt_util.utcnow())
-        await hass.async_block_till_done()
-        assert hass.states.get("sensor.secomat_temperature").state == "21.5"
+        await hass.async_block_till_done(wait_background_tasks=True)
     else:
         [flow] = hass.config_entries.flow.async_progress()
         assert flow["context"]["source"] == "reauth"
         assert flow["context"]["entry_id"] == config_entry.entry_id
         cloud_api.clear_requests()
-        cloud_api.get(PLC_URL, json={"payload": SECOMAT_STATE})
+        cloud_api.get(PLC_URL, json=cloud_response(source=recovery_source))
         result = await hass.config_entries.flow.async_configure(
             flow["flow_id"], {"claim_token": "replacement-token"}
         )
@@ -155,21 +166,31 @@ async def test_polling_failure_and_recovery(hass, config_entry, cloud_api, freez
         assert result["type"] is FlowResultType.ABORT
         assert result["reason"] == "reauth_successful"
         assert not hass.config_entries.flow.async_progress()
-        assert hass.states.get("sensor.secomat_temperature").state == "21.5"
+    for entity_id, (_, _, live_state) in EXPECTED_ENTITIES.items():
+        if entity_id == "binary_sensor.secomat_connectivity":
+            assert hass.states.get(entity_id).state == ("on" if recovery_source == "ws" else "off")
+            assert hass.states.get(entity_id).attributes["source"] == recovery_source
+        else:
+            expected_state = live_state if recovery_source == "ws" else "unavailable"
+            assert hass.states.get(entity_id).state == expected_state
 
 
-async def test_firmware_version_tracks_latest_poll(hass, config_entry, cloud_api, freezer):
-    """The Device Registry shows the live firmware version, not just the initial one."""
+@pytest.mark.parametrize("source", ["ws", "db"])
+async def test_firmware_version_tracks_latest_poll(hass, config_entry, cloud_api, freezer, source):
+    """The Device Registry follows firmware metadata from both live and cached state."""
     config_entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()
     cloud_api.clear_requests()
-    cloud_api.get(PLC_URL, json={"payload": {**SECOMAT_STATE, "fw_version": "2.0.0"}})
-    freezer.tick(timedelta(seconds=61))
+    cloud_api.get(
+        PLC_URL, json=cloud_response({**SECOMAT_STATE, "fw_version": "2.0.0"}, source=source)
+    )
+    freezer.tick(timedelta(seconds=31))
     async_fire_time_changed(hass, dt_util.utcnow())
-    await hass.async_block_till_done()
+    await hass.async_block_till_done(wait_background_tasks=True)
 
-    assert hass.states.get("sensor.secomat_firmware_version").state == "2.0.0"
+    expected_state = "2.0.0" if source == "ws" else "unavailable"
+    assert hass.states.get("sensor.secomat_firmware_version").state == expected_state
     device = dr.async_entries_for_config_entry(dr.async_get(hass), config_entry.entry_id)[0]
     assert device.sw_version == "2.0.0"
 
@@ -189,7 +210,7 @@ async def test_unload_stops_polling_and_reload_preserves_entities(
         for entity_id in EXPECTED_ENTITIES
     )
     cloud_api.clear_requests()
-    cloud_api.get(PLC_URL, json={"payload": SECOMAT_STATE})
+    cloud_api.get(PLC_URL, json=cloud_response())
     freezer.tick(timedelta(minutes=5))
     async_fire_time_changed(hass, dt_util.utcnow())
     await hass.async_block_till_done()
@@ -226,8 +247,8 @@ async def test_multiple_entries_are_independent(hass, config_entry, cloud_api, f
 
     assert await hass.config_entries.async_unload(config_entry.entry_id)
     cloud_api.clear_requests()
-    cloud_api.get(PLC_URL, json={"payload": {**SECOMAT_STATE, "ambient_temperature": 24}})
-    freezer.tick(timedelta(seconds=61))
+    cloud_api.get(PLC_URL, json=cloud_response({**SECOMAT_STATE, "ambient_temperature": 24}))
+    freezer.tick(timedelta(seconds=31))
     async_fire_time_changed(hass, dt_util.utcnow())
     await hass.async_block_till_done()
     assert cloud_api.call_count == 1
@@ -268,7 +289,7 @@ async def test_entity_commands(
     await hass.async_block_till_done()
     cloud_api.clear_requests()
     cloud_api.post(PLC_URL, status=204)
-    cloud_api.get(PLC_URL, json={"payload": {**SECOMAT_STATE, **payload}})
+    cloud_api.get(PLC_URL, json=cloud_response({**SECOMAT_STATE, **payload}))
     await hass.services.async_call(
         entity_id.split(".")[0], service, {"entity_id": entity_id, **extra}, blocking=True
     )
@@ -279,3 +300,106 @@ async def test_entity_commands(
     assert cloud_api.mock_calls[0][3]["claim-token"] == "old-token"
     assert cloud_api.call_count == 2
     assert hass.states.get(entity_id).state == expected_state
+
+
+async def test_add_offline_secomat_and_recover_on_poll(hass, aioclient_mock, freezer):
+    """Cached state validates a Claim Token without publishing stale measurements."""
+    aioclient_mock.get(PLC_URL, json=cloud_response(source="db"))
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": "user"}, data={"claim_token": "new-token"}
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done()
+    entry = result["result"]
+    assert entry.unique_id == "00.00000"
+    assert entry.state is ConfigEntryState.LOADED
+    device = dr.async_entries_for_config_entry(dr.async_get(hass), entry.entry_id)[0]
+    assert device.sw_version == "1.2.3"
+    connectivity = hass.states.get("binary_sensor.secomat_connectivity")
+    assert connectivity.state == "off"
+    assert connectivity.attributes["source"] == "db"
+    assert connectivity.attributes["age"] == "2026-10-26T12:00:00Z"
+    for entity_id in EXPECTED_ENTITIES:
+        if entity_id != "binary_sensor.secomat_connectivity":
+            assert hass.states.get(entity_id).state == "unavailable"
+
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(PLC_URL, json=cloud_response(age="2026-10-26T12:01:00Z"))
+    freezer.tick(timedelta(seconds=31))
+    async_fire_time_changed(hass, dt_util.utcnow())
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert aioclient_mock.call_count == 1
+    for entity_id, (_, _, state) in EXPECTED_ENTITIES.items():
+        assert hass.states.get(entity_id).state == state
+    connectivity = hass.states.get("binary_sensor.secomat_connectivity")
+    assert connectivity.attributes["source"] == "ws"
+    assert connectivity.attributes["age"] == "2026-10-26T12:01:00Z"
+
+
+async def test_polling_interval_is_thirty_seconds(hass, config_entry, cloud_api, freezer):
+    """No early poll, then updated state is visible after the 30-second interval."""
+    freezer.move_to("2026-10-26T12:00:00Z")
+    config_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+    cloud_api.clear_requests()
+    cloud_api.get(PLC_URL, json=cloud_response({**SECOMAT_STATE, "ambient_temperature": 24}))
+
+    freezer.tick(timedelta(seconds=29))
+    async_fire_time_changed(hass, dt_util.utcnow())
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert cloud_api.call_count == 0
+    assert hass.states.get("sensor.secomat_temperature").state == "21.5"
+
+    freezer.tick(timedelta(seconds=2))
+    async_fire_time_changed(hass, dt_util.utcnow())
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert cloud_api.call_count == 1
+    assert hass.states.get("sensor.secomat_temperature").state == "24"
+
+
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        {"src": "db", "age": "2026-10-26T11:00:00Z"},
+        {"src": "unexpected", "age": "2026-10-26T11:30:00Z"},
+        {"src": None, "age": None},
+        {},
+    ],
+    ids=["cached", "unknown-source", "null-metadata", "missing-metadata"],
+)
+async def test_source_changes_gate_all_appliance_entities(
+    hass, config_entry, cloud_api, freezer, metadata
+):
+    """Only explicitly live state stays available; any other source is conservative offline."""
+    config_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    cloud_api.clear_requests()
+    cloud_api.get(
+        PLC_URL, json={**metadata, "payload": {**SECOMAT_STATE, "ambient_temperature": 99}}
+    )
+    freezer.tick(timedelta(seconds=31))
+    async_fire_time_changed(hass, dt_util.utcnow())
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert cloud_api.call_count == 1
+    for entity_id in EXPECTED_ENTITIES:
+        if entity_id != "binary_sensor.secomat_connectivity":
+            assert hass.states.get(entity_id).state == "unavailable"
+    connectivity = hass.states.get("binary_sensor.secomat_connectivity")
+    assert connectivity.state == "off"
+    assert connectivity.attributes["source"] == metadata.get("src")
+    assert connectivity.attributes["age"] == metadata.get("age")
+
+    cloud_api.clear_requests()
+    cloud_api.get(PLC_URL, json=cloud_response(age="2026-10-26T12:02:00Z"))
+    freezer.tick(timedelta(seconds=31))
+    async_fire_time_changed(hass, dt_util.utcnow())
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert cloud_api.call_count == 1
+    for entity_id, (_, _, state) in EXPECTED_ENTITIES.items():
+        assert hass.states.get(entity_id).state == state
+    connectivity = hass.states.get("binary_sensor.secomat_connectivity")
+    assert connectivity.attributes["source"] == "ws"
+    assert connectivity.attributes["age"] == "2026-10-26T12:02:00Z"

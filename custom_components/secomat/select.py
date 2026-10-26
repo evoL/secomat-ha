@@ -34,7 +34,7 @@ class SecomatPowerModeSelect(SecomatEntity, SelectEntity):
 
     @property
     def current_option(self) -> str | None:
-        mode = self.coordinator.data.get("operating_mode")
+        mode = self.coordinator.data.get("payload", {}).get("operating_mode")
         return POWER_MODE_NAMES.get(mode)
 
     async def async_select_option(self, option: str) -> None:

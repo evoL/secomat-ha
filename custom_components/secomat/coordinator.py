@@ -42,6 +42,11 @@ class SecomatCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.device_name = name
 
     @property
+    def is_secomat_connected(self) -> bool:
+        """Whether the cloud has a live WebSocket connection to the Secomat."""
+        return self.data.get("src") == "ws"
+
+    @property
     def device_info(self) -> DeviceInfo:
         """Link every entity to the same Secomat in the Device Registry."""
         return DeviceInfo(
@@ -50,7 +55,7 @@ class SecomatCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             manufacturer="Krüger + Co. AG",
             model="Secomat",
             serial_number=self.secomat_id,
-            sw_version=self.data.get("fw_version"),
+            sw_version=self.data.get("payload", {}).get("fw_version"),
         )
 
     async def _async_update_data(self) -> dict[str, Any]:
@@ -62,10 +67,11 @@ class SecomatCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raise UpdateFailed(str(err)) from err
 
         # Entity device_info is read at registration, not on subsequent state updates.
+        firmware = data.get("payload", {}).get("fw_version")
         registry = dr.async_get(self.hass)
         for device in dr.async_entries_for_config_entry(registry, self.config_entry.entry_id):
-            if device.sw_version != data.get("fw_version"):
-                registry.async_update_device(device.id, sw_version=data.get("fw_version"))
+            if device.sw_version != firmware:
+                registry.async_update_device(device.id, sw_version=firmware)
         return data
 
 

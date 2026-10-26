@@ -45,7 +45,7 @@ class SecomatAutoDrySwitch(SecomatEntity, SwitchEntity):
 
     @property
     def is_on(self) -> bool:
-        return self.coordinator.data.get("operating_mode") == POWER_MODE_READY
+        return self.coordinator.data.get("payload", {}).get("operating_mode") == POWER_MODE_READY
 
     async def async_turn_on(self, **kwargs) -> None:
         await self._send(CMD_WASH_AUTO)
@@ -72,7 +72,7 @@ class SecomatRoomDryingSwitch(SecomatEntity, SwitchEntity):
 
     @property
     def is_on(self) -> bool:
-        return bool(self.coordinator.data.get("room_drying_enabled"))
+        return bool(self.coordinator.data.get("payload", {}).get("room_drying_enabled"))
 
     async def async_turn_on(self, **kwargs) -> None:
         await self._send(CMD_ROOM_ON)

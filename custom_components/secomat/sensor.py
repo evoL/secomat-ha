@@ -48,7 +48,7 @@ class SecomatTemperatureSensor(SecomatSensorBase):
 
     @property
     def native_value(self):
-        return self.coordinator.data.get("ambient_temperature")
+        return self.coordinator.data.get("payload", {}).get("ambient_temperature")
 
 
 class SecomatHumiditySensor(SecomatSensorBase):
@@ -60,7 +60,7 @@ class SecomatHumiditySensor(SecomatSensorBase):
 
     @property
     def native_value(self):
-        return self.coordinator.data.get("humidity")
+        return self.coordinator.data.get("payload", {}).get("humidity")
 
 
 class SecomatTargetHumiditySensor(SecomatSensorBase):
@@ -71,7 +71,7 @@ class SecomatTargetHumiditySensor(SecomatSensorBase):
 
     @property
     def native_value(self):
-        return self.coordinator.data.get("target_humidity_level")
+        return self.coordinator.data.get("payload", {}).get("target_humidity_level")
 
 
 class SecomatFirmwareVersionSensor(SecomatSensorBase):
@@ -81,4 +81,4 @@ class SecomatFirmwareVersionSensor(SecomatSensorBase):
 
     @property
     def native_value(self):
-        return self.coordinator.data.get("fw_version")
+        return self.coordinator.data.get("payload", {}).get("fw_version")

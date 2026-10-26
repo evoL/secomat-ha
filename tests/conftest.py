@@ -18,6 +18,11 @@ SECOMAT_STATE = {
 }
 
 
+def cloud_response(payload=None, *, source="ws", age="2026-10-26T12:00:00Z"):
+    """A cloud envelope with live state unless explicitly marked as cached."""
+    return {"src": source, "age": age, "payload": SECOMAT_STATE if payload is None else payload}
+
+
 @pytest.fixture(autouse=True)
 def custom_integrations(enable_custom_integrations):
     """Allow Home Assistant to discover this custom integration."""
@@ -26,7 +31,7 @@ def custom_integrations(enable_custom_integrations):
 @pytest.fixture
 def cloud_api(aioclient_mock):
     """Serve a representative Secomat state without contacting the cloud."""
-    aioclient_mock.get(PLC_URL, json={"payload": SECOMAT_STATE})
+    aioclient_mock.get(PLC_URL, json=cloud_response())
     return aioclient_mock
 
 

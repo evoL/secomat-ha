@@ -8,7 +8,7 @@ from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from custom_components.secomat.const import DOMAIN
 
-from .conftest import PLC_URL, SECOMAT_STATE
+from .conftest import PLC_URL, SECOMAT_STATE, cloud_response
 
 
 @pytest.mark.parametrize("name", [None, "Laundry room", ""])
@@ -17,7 +17,7 @@ async def test_user_creates_entry(hass, aioclient_mock, name, source):
     """Discover the Secomat ID from a Claim Token, even with cached cloud state."""
     aioclient_mock.get(
         PLC_URL,
-        json={"src": source, "payload": {**SECOMAT_STATE, "serial_number": " 00.00000 "}},
+        json=cloud_response({**SECOMAT_STATE, "serial_number": " 00.00000 "}, source=source),
     )
     result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
     assert result["type"] is FlowResultType.FORM
@@ -70,7 +70,7 @@ async def test_missing_secomat_id_cannot_connect(
 ):
     """A successful HTTP response must identify a Secomat before accepting a Claim Token."""
     payload = {key: value for key, value in SECOMAT_STATE.items() if key != "serial_number"}
-    aioclient_mock.get(PLC_URL, json={"payload": {**payload, **identity}})
+    aioclient_mock.get(PLC_URL, json=cloud_response({**payload, **identity}))
 
     context = {"source": source}
     if source != "user":
@@ -121,7 +121,7 @@ async def test_validation_failure_and_retry(
     aioclient_mock.clear_requests()
     secomat_id = "00.00001" if source == "user" else "00.00000"
     aioclient_mock.get(
-        PLC_URL, json={"payload": {**SECOMAT_STATE, "serial_number": secomat_id}}
+        PLC_URL, json=cloud_response({**SECOMAT_STATE, "serial_number": secomat_id})
     )
     result = await hass.config_entries.flow.async_configure(result["flow_id"], user_input)
     if source == "user":
@@ -146,7 +146,7 @@ async def test_replacement_claim_token_rejects_different_secomat(
     await hass.async_block_till_done()
     original_data = dict(config_entry.data)
     cloud_api.clear_requests()
-    cloud_api.get(PLC_URL, json={"payload": {**SECOMAT_STATE, "serial_number": "00.00001"}})
+    cloud_api.get(PLC_URL, json=cloud_response({**SECOMAT_STATE, "serial_number": "00.00001"}))
 
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": source, "entry_id": config_entry.entry_id}
@@ -165,7 +165,7 @@ async def test_replacement_claim_token_rejects_different_secomat(
     assert cloud_api.call_count == 1  # Rejection must not reload the existing entry.
 
     cloud_api.clear_requests()
-    cloud_api.get(PLC_URL, json={"payload": {**SECOMAT_STATE, "serial_number": " 00.00000 "}})
+    cloud_api.get(PLC_URL, json=cloud_response({**SECOMAT_STATE, "serial_number": " 00.00000 "}))
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"claim_token": "replacement-token"}
     )
@@ -178,8 +178,9 @@ async def test_replacement_claim_token_rejects_different_secomat(
 
 
 @pytest.mark.parametrize("source", ["reconfigure", "reauth"])
+@pytest.mark.parametrize("cloud_source", ["ws", "db"])
 async def test_claim_token_replacement_reloads_existing_entry(
-    hass, config_entry, cloud_api, source
+    hass, config_entry, cloud_api, source, cloud_source
 ):
     """Replacing a Claim Token reloads the same device and entity identities."""
     config_entry.add_to_hass(hass)
@@ -202,7 +203,10 @@ async def test_claim_token_replacement_reloads_existing_entry(
     assert schema["claim_token"].config["type"] == "password"
 
     cloud_api.clear_requests()
-    cloud_api.get(PLC_URL, json={"payload": {**SECOMAT_STATE, "ambient_temperature": 23}})
+    cloud_api.get(
+        PLC_URL,
+        json=cloud_response({**SECOMAT_STATE, "ambient_temperature": 23}, source=cloud_source),
+    )
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"claim_token": "replacement-token"}
     )
@@ -224,4 +228,9 @@ async def test_claim_token_replacement_reloads_existing_entry(
     )
     device_after = dr.async_entries_for_config_entry(dr.async_get(hass), config_entry.entry_id)[0]
     assert device_after.id == device_before.id
-    assert hass.states.get("sensor.secomat_temperature").state == "23"
+    expected_state = "23" if cloud_source == "ws" else "unavailable"
+    assert hass.states.get("sensor.secomat_temperature").state == expected_state
+    connectivity = hass.states.get("binary_sensor.secomat_connectivity")
+    assert connectivity.state == ("on" if cloud_source == "ws" else "off")
+    assert connectivity.attributes["source"] == cloud_source
+    assert device_after.sw_version == "1.2.3"

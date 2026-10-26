@@ -3,7 +3,7 @@
 DOMAIN = "secomat"
 
 DEFAULT_API_BASE_URL = "https://seco.krueger.ch:8080/app1/v1/"
-DEFAULT_SCAN_INTERVAL = 60  # seconds
+DEFAULT_SCAN_INTERVAL = 30  # seconds
 
 DEFAULT_NAME = "Secomat"
 CONF_SECOMAT_ID = "secomat_id"
