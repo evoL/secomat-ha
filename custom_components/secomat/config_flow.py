@@ -25,7 +25,6 @@ _LOGGER = logging.getLogger(__name__)
 CLAIM_TOKEN_SELECTOR = TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD))
 USER_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_SECOMAT_ID): TextSelector(),
         vol.Required(CONF_CLAIM_TOKEN): CLAIM_TOKEN_SELECTOR,
         vol.Optional(CONF_NAME, default=DEFAULT_NAME): TextSelector(),
     }
@@ -38,29 +37,35 @@ class SecomatConfigFlow(ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
-    async def _async_validate_claim_token(self, claim_token: str) -> dict[str, str]:
-        """Return an inline form error if a live state request fails."""
+    async def _async_validate_claim_token(
+        self, claim_token: str
+    ) -> tuple[str | None, dict[str, str]]:
+        """Discover the Secomat ID or return an inline form error."""
         client = SecomatClient(async_get_clientsession(self.hass), claim_token)
         try:
-            await client.async_get_state()
+            state = await client.async_get_state()
+            serial_number = state.get("serial_number")
+            if not isinstance(serial_number, str) or not (secomat_id := serial_number.strip()):
+                return None, {"base": "cannot_connect"}
         except SecomatAuthError:
-            return {"base": "invalid_auth"}
+            return None, {"base": "invalid_auth"}
         except SecomatApiError:
-            return {"base": "cannot_connect"}
+            return None, {"base": "cannot_connect"}
         except Exception:
             _LOGGER.exception("Unexpected error validating the Secomat Claim Token")
-            return {"base": "unknown"}
-        return {}
+            return None, {"base": "unknown"}
+        return secomat_id, {}
 
     async def async_step_user(self, user_input: dict | None = None) -> ConfigFlowResult:
         """Add a Secomat from Devices & Services."""
         errors = {}
         if user_input is not None:
-            secomat_id = user_input[CONF_SECOMAT_ID].strip()
-            await self.async_set_unique_id(secomat_id)
-            self._abort_if_unique_id_configured()
-            errors = await self._async_validate_claim_token(user_input[CONF_CLAIM_TOKEN])
+            secomat_id, errors = await self._async_validate_claim_token(
+                user_input[CONF_CLAIM_TOKEN]
+            )
             if not errors:
+                await self.async_set_unique_id(secomat_id)
+                self._abort_if_unique_id_configured()
                 name = user_input.get(CONF_NAME, "").strip() or DEFAULT_NAME
                 return self.async_create_entry(
                     title=name,
@@ -94,7 +99,11 @@ class SecomatConfigFlow(ConfigFlow, domain=DOMAIN):
         """Validate a replacement Claim Token, update the entry, and reload it."""
         errors = {}
         if user_input is not None:
-            errors = await self._async_validate_claim_token(user_input[CONF_CLAIM_TOKEN])
+            secomat_id, errors = await self._async_validate_claim_token(
+                user_input[CONF_CLAIM_TOKEN]
+            )
+            if not errors and secomat_id != (entry.unique_id or entry.data[CONF_SECOMAT_ID]):
+                errors = {"base": "wrong_secomat"}
             if not errors:
                 return self.async_update_reload_and_abort(
                     entry, data_updates={CONF_CLAIM_TOKEN: user_input[CONF_CLAIM_TOKEN]}

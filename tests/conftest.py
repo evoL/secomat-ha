@@ -7,6 +7,7 @@ from custom_components.secomat.const import DOMAIN
 
 PLC_URL = "https://seco.krueger.ch:8080/app1/v1/plc"
 SECOMAT_STATE = {
+    "serial_number": "00.00000",
     "ambient_temperature": 21.5,
     "humidity": 48,
     "target_humidity_level": 2,
