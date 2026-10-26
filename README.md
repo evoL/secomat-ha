@@ -73,16 +73,35 @@ It's gitignored; never commit your real one.
 
 ## Installing the Home Assistant integration
 
-1. Copy `custom_components/secomat/` into your HA config's `custom_components/`
-   directory.
-2. Put your filled-in `credentials.json` somewhere HA can read (e.g.
+### Via HACS (recommended)
+
+1. Install [HACS](https://hacs.xyz/docs/use/download/download/) if you haven't already.
+2. Add this repository as a custom repository: **HACS → Integrations → ⋮ → Custom
+   repositories**, then enter `https://github.com/evoL/secomat-ha` with category
+   **Integration**.
+
+   [![Open your Home Assistant instance and open a repository inside the HACS custom repositories dialog.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=evoL&repository=secomat-ha&category=integration)
+
+3. Search for **Krüger Secomat** in HACS, install it, and restart Home Assistant when
+   prompted.
+
+HACS installs from the `main` branch; there are no tagged releases yet.
+
+### Manually
+
+Copy `custom_components/secomat/` into your HA config's `custom_components/`
+directory.
+
+### Configuration (either route)
+
+1. Put your filled-in `credentials.json` somewhere HA can read (e.g.
    `/config/secomat_credentials.json`), `chmod 600` it.
-3. Add to `configuration.yaml`:
+2. Add to `configuration.yaml`:
    ```yaml
    secomat:
      credentials_file: /config/secomat_credentials.json
    ```
-4. Restart Home Assistant.
+3. Restart Home Assistant.
 
 No extra Python packages needed — the integration uses Home Assistant's own shared
 `aiohttp` client session.
