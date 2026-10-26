@@ -4,9 +4,8 @@
     "step": {
       "user": {
         "title": "Add a Secomat",
-        "description": "Enter the Secomat ID and Claim Token extracted from the paired official app. The Claim Token will be validated against the Krüger cloud API.",
+        "description": "Enter your Claim Token and an optional name. The Secomat ID will be discovered automatically from the Krüger cloud API.",
         "data": {
-          "secomat_id": "Secomat ID",
           "claim_token": "Claim Token",
           "name": "Name"
         }
@@ -29,6 +28,7 @@
     "error": {
       "invalid_auth": "The Claim Token was rejected. Check it and try again.",
       "cannot_connect": "Unable to connect to the Krüger cloud API. Try again later.",
+      "wrong_secomat": "This Claim Token belongs to a different Secomat.",
       "unknown": "An unexpected error occurred. Check the Home Assistant logs."
     },
     "abort": {
