@@ -5,3 +5,7 @@ secrets/
 __pycache__/
 *.pyc
 .DS_Store
+.jj/
+.venv/
+.pytest_cache/
+.ruff_cache/
