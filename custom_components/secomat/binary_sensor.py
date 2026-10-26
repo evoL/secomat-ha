@@ -45,7 +45,7 @@ class SecomatLaundryDetectedSensor(SecomatBinarySensorBase):
 
     @property
     def is_on(self):
-        value = self.coordinator.data.get("payload", {}).get("eye_seeing_object")
+        value = self.coordinator.payload.get("eye_seeing_object")
         return bool(value) if value is not None else None
 
 
@@ -58,7 +58,7 @@ class SecomatDryingSensor(SecomatBinarySensorBase):
 
     @property
     def is_on(self) -> bool | None:
-        value = self.coordinator.data.get("payload", {}).get("secomat_state")
+        value = self.coordinator.payload.get("secomat_state")
         return value > 0 if value is not None else None
 
 
@@ -72,11 +72,11 @@ class SecomatProblemSensor(SecomatBinarySensorBase):
 
     @property
     def is_on(self) -> bool:
-        return bool(self.coordinator.data.get("payload", {}).get("error_list"))
+        return bool(self.coordinator.payload.get("error_list"))
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        return {"errors": self.coordinator.data.get("payload", {}).get("error_list", [])}
+        return {"errors": self.coordinator.payload.get("error_list", [])}
 
 
 class SecomatConnectivitySensor(SecomatBinarySensorBase):
