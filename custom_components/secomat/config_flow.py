@@ -44,8 +44,8 @@ class SecomatConfigFlow(ConfigFlow, domain=DOMAIN):
         client = SecomatClient(async_get_clientsession(self.hass), claim_token)
         try:
             state = await client.async_get_state()
-            serial_number = state.get("payload", {}).get("serial_number")
-            if not isinstance(serial_number, str) or not (secomat_id := serial_number.strip()):
+            raw_secomat_id = state.get("payload", {}).get("serial_number")
+            if not isinstance(raw_secomat_id, str) or not (secomat_id := raw_secomat_id.strip()):
                 return None, {"base": "cannot_connect"}
         except SecomatAuthError:
             return None, {"base": "invalid_auth"}

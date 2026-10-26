@@ -48,7 +48,7 @@ class SecomatTemperatureSensor(SecomatSensorBase):
 
     @property
     def native_value(self):
-        return self.coordinator.data.get("payload", {}).get("ambient_temperature")
+        return self.coordinator.payload.get("ambient_temperature")
 
 
 class SecomatHumiditySensor(SecomatSensorBase):
@@ -60,7 +60,7 @@ class SecomatHumiditySensor(SecomatSensorBase):
 
     @property
     def native_value(self):
-        return self.coordinator.data.get("payload", {}).get("humidity")
+        return self.coordinator.payload.get("humidity")
 
 
 class SecomatDryingStateSensor(SecomatSensorBase):
@@ -73,7 +73,7 @@ class SecomatDryingStateSensor(SecomatSensorBase):
 
     @property
     def native_value(self) -> str | None:
-        value = self.coordinator.data.get("payload", {}).get("secomat_state")
+        value = self.coordinator.payload.get("secomat_state")
         if value is None:
             return None
         return {0: "Idle", 2: "Fan only", 6: "Drying"}.get(value, "Unknown")
@@ -89,4 +89,4 @@ class SecomatDryingStateRawSensor(SecomatSensorBase):
 
     @property
     def native_value(self) -> int | None:
-        return self.coordinator.data.get("payload", {}).get("secomat_state")
+        return self.coordinator.payload.get("secomat_state")

@@ -43,6 +43,11 @@ class SecomatCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.device_name = name
 
     @property
+    def payload(self) -> dict[str, Any]:
+        """The latest Secomat state without the cloud transport envelope."""
+        return self.data.get("payload", {})
+
+    @property
     def is_secomat_connected(self) -> bool:
         """Whether the cloud has a live WebSocket connection to the Secomat."""
         return self.data.get("src") == "ws"
@@ -56,7 +61,7 @@ class SecomatCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             manufacturer="Krüger + Co. AG",
             model="Secomat",
             serial_number=self.secomat_id,
-            sw_version=self.data.get("payload", {}).get("fw_version"),
+            sw_version=self.payload.get("fw_version"),
         )
 
     async def async_send_command(

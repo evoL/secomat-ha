@@ -51,7 +51,7 @@ class SecomatAutoDrySwitch(SecomatEntity, SwitchEntity):
 
     @property
     def is_on(self) -> bool:
-        return self.coordinator.data.get("payload", {}).get("operating_mode") == POWER_MODE_READY
+        return self.coordinator.payload.get("operating_mode") == POWER_MODE_READY
 
     async def async_turn_on(self, **kwargs) -> None:
         await self.coordinator.async_send_command(CMD_WASH_AUTO)
@@ -70,7 +70,7 @@ class SecomatRoomDryingSwitch(SecomatEntity, SwitchEntity):
 
     @property
     def is_on(self) -> bool:
-        return bool(self.coordinator.data.get("payload", {}).get("room_drying_enabled"))
+        return bool(self.coordinator.payload.get("room_drying_enabled"))
 
     async def async_turn_on(self, **kwargs) -> None:
         await self.coordinator.async_send_command(CMD_ROOM_ON)
@@ -92,7 +92,7 @@ class SecomatTargetHumidityLockSwitch(SecomatEntity, SwitchEntity):
 
     @property
     def is_on(self) -> bool:
-        return bool(self.coordinator.data.get("payload", {}).get("target_humidity_level_locked"))
+        return bool(self.coordinator.payload.get("target_humidity_level_locked"))
 
     async def async_turn_on(self, **kwargs) -> None:
         await self.coordinator.async_send_command(CMD_CHANGE, {ARG_WASH_LOCK_MOISTURE_TARGET: 1})
@@ -114,7 +114,7 @@ class SecomatControlLightSwitch(SecomatEntity, SwitchEntity):
 
     @property
     def is_on(self) -> bool:
-        return bool(self.coordinator.data.get("payload", {}).get("hmi_backlight"))
+        return bool(self.coordinator.payload.get("hmi_backlight"))
 
     async def async_turn_on(self, **kwargs) -> None:
         await self.coordinator.async_send_command(CMD_CHANGE, {ARG_HMI_BACKLIGHT: 1})

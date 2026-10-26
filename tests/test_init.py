@@ -72,6 +72,13 @@ EXPECTED_ICONS = {
     "target_humidity_level_lock": "mdi:lock",
     "control_light": "mdi:lightbulb",
 }
+COMMON_COMMAND_ERROR_CASES = [
+    ("select.secomat_target_humidity_level", "select_option", {"option": "Very dry"}),
+    ("switch.secomat_auto_dry", "turn_off", {}),
+    ("switch.secomat_room_drying", "turn_off", {}),
+    ("switch.secomat_target_humidity_level_lock", "turn_off", {}),
+    ("switch.secomat_control_light", "turn_off", {}),
+]
 
 
 async def test_setup_registers_device_and_fourteen_entities(hass, config_entry, cloud_api):
@@ -401,11 +408,7 @@ async def test_entity_commands(
     ("entity_id", "service", "extra"),
     [
         ("select.secomat_power_mode", "select_option", {"option": "Off"}),
-        ("select.secomat_target_humidity_level", "select_option", {"option": "Very dry"}),
-        ("switch.secomat_auto_dry", "turn_off", {}),
-        ("switch.secomat_room_drying", "turn_off", {}),
-        ("switch.secomat_target_humidity_level_lock", "turn_off", {}),
-        ("switch.secomat_control_light", "turn_off", {}),
+        *COMMON_COMMAND_ERROR_CASES,
     ],
 )
 @pytest.mark.parametrize(
@@ -453,11 +456,7 @@ async def test_failed_command_surfaces_service_error_without_refresh(
     ("entity_id", "service", "extra"),
     [
         ("select.secomat_power_mode", "select_option", {"option": "Manual on"}),
-        ("select.secomat_target_humidity_level", "select_option", {"option": "Very dry"}),
-        ("switch.secomat_auto_dry", "turn_off", {}),
-        ("switch.secomat_room_drying", "turn_off", {}),
-        ("switch.secomat_target_humidity_level_lock", "turn_off", {}),
-        ("switch.secomat_control_light", "turn_off", {}),
+        *COMMON_COMMAND_ERROR_CASES,
     ],
 )
 async def test_command_rejected_claim_token_starts_reauth_and_raises_service_error(
