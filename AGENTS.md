@@ -2,8 +2,8 @@
 
 ## Checks
 
-- Lint: `uvx ruff check .`
-- Test: `uv run pytest`
+- Lint: `UV_PROJECT_ENVIRONMENT=.venv-agent uv run --locked ruff check .`
+- Test: `UV_PROJECT_ENVIRONMENT=.venv-agent uv run --locked pytest`
 
 ## Version control
 

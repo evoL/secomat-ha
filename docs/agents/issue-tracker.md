@@ -16,6 +16,13 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 
 **PRs as a request surface: no.**
 
+## Delivery and closure
+
+- Keep implementation issues open until their supporting commits are published to this repository. Verify the remote contains the reviewed commit before resolving the work.
+- For PR delivery, add closing references (for example, `Closes #2`) to the PR body and let merge close the issues.
+- For authorized direct delivery, verify the push succeeded, then close the issues with a public commit link.
+- If publication is not authorized, report the local branch and leave implementation issues open. Research answers without code can be resolved in issue comments.
+
 ## Wayfinding operations
 
 Used by `/wayfinder`. The **map** is a single issue with **child** issues as tickets.
@@ -25,4 +32,4 @@ Used by `/wayfinder`. The **map** is a single issue with **child** issues as tic
 - **Blocking**: `gh api --method POST repos/<owner>/<repo>/issues/<child>/dependencies/blocked_by -F issue_id=<blocker-db-id>`, where `<blocker-db-id>` is `gh api repos/<owner>/<repo>/issues/<n> --jq .id`. Fall back to `Blocked by: #<n>` at the top of the child body if unavailable.
 - **Frontier query**: list the map's open children, drop any with an open blocker (`issue_dependencies_summary.blocked_by > 0` or open `Blocked by` issue) or an assignee; first in map order wins.
 - **Claim**: `gh issue edit <n> --add-assignee @me`.
-- **Resolve**: `gh issue comment <n> --body "<answer>"`, `gh issue close <n>`, then append a context pointer to the map's Decisions-so-far.
+- **Resolve**: post the answer with `gh issue comment <n> --body "<answer>"`. For implementation work, apply the delivery and closure gate above; otherwise close the issue. Append a context pointer to the map's Decisions-so-far.

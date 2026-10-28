@@ -7,7 +7,7 @@ __pycache__/
 .DS_Store
 .jj/
 .venv/
+.venv-agent/
 .pytest_cache/
 .ruff_cache/
-uv.lock
 .coverage*

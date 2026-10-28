@@ -178,7 +178,21 @@ uses the cloud API.
 
 ## Development
 
-Run `uvx ruff check .` and `uv run pytest`. Tests use
+The default test interpreter is pinned in `.python-version`; dependency versions are
+recorded in the tracked `uv.lock`. Use an isolated environment to preserve any
+existing `.venv`:
+
+```sh
+export UV_PROJECT_ENVIRONMENT=.venv-agent
+uv run --locked ruff check .
+uv run --locked pytest
+```
+
+CI uses the same interpreter and locked commands. Update dependencies deliberately
+with `uv lock`; `--locked` rejects a stale lockfile instead of resolving new versions
+during checks.
+
+Tests use
 `pytest-homeassistant-custom-component` and fake only the Krüger cloud HTTP boundary;
 they exercise Home Assistant's flow manager, config entry lifecycle, registries,
 entity states, and services without needing a real Secomat or Claim Token.

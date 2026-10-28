@@ -9,16 +9,19 @@ jobs:
   lint-and-test:
     name: Ruff & Pytest
     runs-on: ubuntu-latest
+    env:
+      UV_PROJECT_ENVIRONMENT: .venv-agent
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.15"
+      - name: Install pinned Python
+        run: uv python install
       - name: Lint with Ruff
-        run: uvx ruff check .
+        run: uv run --locked ruff check .
       - name: Run tests with Pytest
-        run: |
-          if [ -d tests ]; then
-            uv run pytest
-          fi
+        run: uv run --locked pytest
 
   hassfest:
     name: Hassfest
