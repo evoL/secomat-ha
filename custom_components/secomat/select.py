@@ -9,11 +9,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
     ARG_WASH_RESIDUAL_MOISTURE_TARGET,
-    ARG_WASH_START_TIME,
     CMD_CHANGE,
     POWER_MODE_NAMES,
-    POWER_MODE_ON,
-    POWER_MODE_TO_COMMAND,
 )
 from .coordinator import SecomatConfigEntry, SecomatCoordinator
 from .entity import SecomatEntity
@@ -53,9 +50,7 @@ class SecomatPowerModeSelect(SecomatEntity, SelectEntity):
         if mode is None:
             _LOGGER.error("Unknown secomat power mode option: %s", option)
             return
-        command = POWER_MODE_TO_COMMAND[mode]
-        args = {ARG_WASH_START_TIME: 0} if mode == POWER_MODE_ON else None
-        await self.coordinator.async_send_command(command, args)
+        await self.coordinator.async_set_power_mode(mode)
 
 
 class SecomatTargetHumiditySelect(SecomatEntity, SelectEntity):

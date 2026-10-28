@@ -76,7 +76,9 @@ class SecomatDryingStateSensor(SecomatSensorBase):
         value = self.coordinator.payload.get("secomat_state")
         if value is None:
             return None
-        return {0: "Idle", 2: "Fan only", 6: "Drying"}.get(value, "Unknown")
+        return {0: "Idle", 2: "Fan only", 6: "Drying", 12: "Drying", 15: "Idle"}.get(
+            value, "Unknown"
+        )
 
 
 class SecomatDryingStateRawSensor(SecomatSensorBase):

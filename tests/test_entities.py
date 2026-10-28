@@ -15,16 +15,24 @@ from .conftest import PLC_URL, SECOMAT_STATE, cloud_response
         (0, "off", "Idle", "0"),
         (2, "on", "Fan only", "2"),
         (6, "on", "Drying", "6"),
-        (4, "on", "Unknown", "4"),
+        (12, "on", "Drying", "12"),
+        (15, "off", "Idle", "15"),
+        (4, "unknown", "Unknown", "4"),
         (None, "unknown", "unknown", "unknown"),
         ("missing", "unknown", "unknown", "unknown"),
     ],
 )
+@pytest.mark.parametrize(("power_mode", "room_drying"), [(2, 0), (1, 1)])
 async def test_drying_state_readings(
-    hass, config_entry, aioclient_mock, raw, running, label, raw_state
+    hass, config_entry, aioclient_mock, raw, running, label, raw_state, power_mode, room_drying
 ):
     """Physical Drying State preserves unseen integers and missing readings without averaging."""
-    payload = {**SECOMAT_STATE, "secomat_state": raw}
+    payload = {
+        **SECOMAT_STATE,
+        "secomat_state": raw,
+        "operating_mode": power_mode,
+        "room_drying_enabled": room_drying,
+    }
     if raw == "missing":
         del payload["secomat_state"]
     aioclient_mock.get(PLC_URL, json=cloud_response(payload))

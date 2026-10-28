@@ -59,7 +59,7 @@ class SecomatDryingSensor(SecomatBinarySensorBase):
     @property
     def is_on(self) -> bool | None:
         value = self.coordinator.payload.get("secomat_state")
-        return value > 0 if value is not None else None
+        return {0: False, 2: True, 6: True, 12: True, 15: False}.get(value)
 
 
 class SecomatProblemSensor(SecomatBinarySensorBase):

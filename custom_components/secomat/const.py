@@ -27,7 +27,7 @@ ARG_HMI_BACKLIGHT = "hmi_backlight"
 # ch.krueger.secomat.redux.PowerMode -> payload.operating_mode
 POWER_MODE_STAND_BY = 0  # off
 POWER_MODE_READY = 1  # auto (waits for laundry / eye sensor)
-POWER_MODE_ON = 2  # manual on
+POWER_MODE_ON = 2  # laundry drying (entered automatically or by a manual start)
 
 POWER_MODE_TO_COMMAND = {
     POWER_MODE_STAND_BY: CMD_OFF,

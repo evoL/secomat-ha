@@ -407,6 +407,65 @@ async def test_entity_commands(
 @pytest.mark.parametrize(
     ("entity_id", "service", "extra"),
     [
+        ("select.secomat_power_mode", "select_option", {"option": "Auto"}),
+        ("switch.secomat_auto_dry", "turn_on", {}),
+    ],
+)
+@pytest.mark.parametrize("status", [200, 204])
+async def test_auto_controls_stop_manual_drying(
+    hass, config_entry, cloud_api, freezer, entity_id, service, extra, status
+):
+    """Returning to Auto stops laundry drying and waits for reported hardware rundown."""
+    manual_payload = {**SECOMAT_STATE, "operating_mode": 2, "room_drying_enabled": 0}
+    cloud_api.clear_requests()
+    cloud_api.get(PLC_URL, json=cloud_response(manual_payload))
+    config_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+    assert hass.states.get("select.secomat_power_mode").state == "Manual on"
+    cloud_api.clear_requests()
+    cloud_api.post(PLC_URL, status=status)
+    cloud_api.get(PLC_URL, json=cloud_response(manual_payload))
+
+    service_task = asyncio.create_task(
+        hass.services.async_call(
+            entity_id.split(".")[0], service, {"entity_id": entity_id, **extra}, blocking=True
+        )
+    )
+    try:
+        for _ in range(20):
+            await asyncio.sleep(0)
+        assert cloud_api.call_count == 1
+        assert cloud_api.mock_calls[0][0].lower() == "post"
+        assert cloud_api.mock_calls[0][2] == {"command": "WASH_MANUAL_OFF", "args": {}}
+
+        freezer.tick(timedelta(seconds=2))
+        async_fire_time_changed_exact(hass, dt_util.utcnow())
+        await service_task
+        await hass.async_block_till_done()
+        assert [call[0].lower() for call in cloud_api.mock_calls] == ["post", "get"]
+        assert hass.states.get("select.secomat_power_mode").state == "Manual on"
+        assert hass.states.get("switch.secomat_auto_dry").state == "off"
+
+        cloud_api.clear_requests()
+        cloud_api.get(
+            PLC_URL,
+            json=cloud_response({**manual_payload, "operating_mode": 1, "secomat_state": 0}),
+        )
+        freezer.tick(timedelta(seconds=31))
+        async_fire_time_changed(hass, dt_util.utcnow())
+        await hass.async_block_till_done()
+        assert [call[0].lower() for call in cloud_api.mock_calls] == ["get"]
+        assert hass.states.get("select.secomat_power_mode").state == "Auto"
+        assert hass.states.get("switch.secomat_auto_dry").state == "on"
+    finally:
+        service_task.cancel()
+        await asyncio.gather(service_task, return_exceptions=True)
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "service", "extra"),
+    [
         ("select.secomat_power_mode", "select_option", {"option": "Off"}),
         *COMMON_COMMAND_ERROR_CASES,
     ],

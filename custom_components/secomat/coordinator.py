@@ -15,7 +15,15 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import SecomatApiError, SecomatAuthError, SecomatClient
-from .const import DEFAULT_SCAN_INTERVAL, DOMAIN
+from .const import (
+    ARG_WASH_START_TIME,
+    CMD_WASH_MANUAL_OFF,
+    DEFAULT_SCAN_INTERVAL,
+    DOMAIN,
+    POWER_MODE_ON,
+    POWER_MODE_READY,
+    POWER_MODE_TO_COMMAND,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -63,6 +71,15 @@ class SecomatCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             serial_number=self.secomat_id,
             sw_version=self.payload.get("fw_version"),
         )
+
+    async def async_set_power_mode(self, mode: int) -> None:
+        """Choose the command for the transition, not just the requested Power Mode."""
+        command = POWER_MODE_TO_COMMAND[mode]
+        if mode == POWER_MODE_READY and self.payload.get("operating_mode") == POWER_MODE_ON:
+            # WASH_AUTO arms Auto from Off; active laundry drying must be stopped instead.
+            command = CMD_WASH_MANUAL_OFF
+        args = {ARG_WASH_START_TIME: 0} if mode == POWER_MODE_ON else None
+        await self.async_send_command(command, args)
 
     async def async_send_command(
         self, command: str, args: dict[str, int] | None = None

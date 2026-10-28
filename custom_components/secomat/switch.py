@@ -13,7 +13,6 @@ from .const import (
     CMD_OFF,
     CMD_ROOM_OFF,
     CMD_ROOM_ON,
-    CMD_WASH_AUTO,
     POWER_MODE_READY,
 )
 from .coordinator import SecomatConfigEntry, SecomatCoordinator
@@ -38,8 +37,8 @@ class SecomatAutoDrySwitch(SecomatEntity, SwitchEntity):
     """One-tap control for the secomat's 'Auto' drying mode (READY).
 
     On = Auto (the app's smart start-stop mode: waits for laundry, dries it
-    automatically). Off = Off (STAND_BY). Doesn't touch "Manual on" (immediate
-    forced start) - that's the physical panel's override, not exposed here.
+    automatically). Enabling it during laundry drying stops the current cycle
+    and returns to Auto. Off = Off (STAND_BY), rather than a manual start.
     """
 
     _attr_name = "Auto dry"
@@ -54,7 +53,7 @@ class SecomatAutoDrySwitch(SecomatEntity, SwitchEntity):
         return self.coordinator.payload.get("operating_mode") == POWER_MODE_READY
 
     async def async_turn_on(self, **kwargs) -> None:
-        await self.coordinator.async_send_command(CMD_WASH_AUTO)
+        await self.coordinator.async_set_power_mode(POWER_MODE_READY)
 
     async def async_turn_off(self, **kwargs) -> None:
         await self.coordinator.async_send_command(CMD_OFF)

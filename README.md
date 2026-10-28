@@ -34,11 +34,16 @@ All entities belong to a single Secomat device in **Settings → Devices & servi
 showing its Secomat ID and live firmware version. The entity IDs above use the default
 name, **Secomat**; custom names change the default entity ID prefix.
 
-Power Mode and Room Drying describe which modes are armed; Drying State shows what
-the fan and compressor are actually doing. Raw values `0`, `2`, and `6` mean Idle,
-Fan only, and Drying respectively. An unseen integer appears as **Unknown** in the
-enum while remaining visible unchanged in the raw diagnostic sensor; missing
-readings remain unknown rather than implying that the Secomat is idle.
+Power Mode and Room Drying describe the program state; Drying State shows what
+the fan and compressor are actually doing. Raw values `0` and `15` mean Idle,
+`2` means Fan only, and `6` and `12` mean Drying. State `15` is a completed cycle
+waiting for laundry removal, or Room Drying standby, with the fan and compressor
+off. Unseen integers remain visible unchanged in the raw diagnostic sensor;
+the enum and Drying binary sensor report unknown for unrecognized or missing readings.
+
+The existing **Manual on** label is retained for Power Mode `2`, but this state can
+also be entered automatically when Auto detects laundry. It can persist after a
+cycle finishes, so it does not by itself mean that the fan or compressor is running.
 
 When the Secomat disconnects from the cloud, Connectivity stays available and shows
 **off**. All other 13 entities become **unavailable** so cached readings are not
@@ -162,8 +167,14 @@ drying cycle (`operating_mode` = 2, "Manual on") is already active, rather than
 silently corrupting its own state.
 
 Manual on sends `WASH_MANUAL_ON` with `{"prg_wash_starttime": 0}` to start immediately.
+Both the Power Mode selector and Auto dry switch use `WASH_AUTO` to enter Auto from
+Off, but `WASH_MANUAL_OFF` to return from Manual on to Auto: sending `WASH_AUTO`
+while Power Mode is `2` is rejected with HTTP 400.
 After any successful control command, the integration waits **2 seconds** before
 requesting refreshed cloud state, giving the Secomat time to report the change.
+Hardware rundown can take longer when returning to Auto; controls continue to show
+the reported mode until a later poll confirms the transition, rather than assuming
+that the command has already completed.
 Rejected commands and network failures surface as Home Assistant service errors
 rather than silently reverting the control.
 
