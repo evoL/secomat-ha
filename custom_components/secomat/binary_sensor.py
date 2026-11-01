@@ -8,6 +8,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .const import DRYING_STATE_RUNNING
 from .coordinator import SecomatConfigEntry, SecomatCoordinator
 from .entity import SecomatEntity
 
@@ -59,7 +60,7 @@ class SecomatDryingSensor(SecomatBinarySensorBase):
     @property
     def is_on(self) -> bool | None:
         value = self.coordinator.payload.get("secomat_state")
-        return {0: False, 2: True, 6: True, 12: True, 15: False}.get(value)
+        return DRYING_STATE_RUNNING.get(value)
 
 
 class SecomatProblemSensor(SecomatBinarySensorBase):

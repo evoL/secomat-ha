@@ -11,6 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .const import DRYING_STATE_NAMES
 from .coordinator import SecomatConfigEntry, SecomatCoordinator
 from .entity import SecomatEntity
 
@@ -68,7 +69,7 @@ class SecomatDryingStateSensor(SecomatSensorBase):
 
     _attr_name = "Drying state"
     _attr_device_class = SensorDeviceClass.ENUM
-    _attr_options = ["Idle", "Fan only", "Drying", "Unknown"]
+    _attr_options = [*DRYING_STATE_NAMES.values(), "Unknown"]
     _key = "drying_state"
 
     @property
@@ -76,9 +77,7 @@ class SecomatDryingStateSensor(SecomatSensorBase):
         value = self.coordinator.payload.get("secomat_state")
         if value is None:
             return None
-        return {0: "Idle", 2: "Fan only", 6: "Drying", 12: "Drying", 15: "Idle"}.get(
-            value, "Unknown"
-        )
+        return DRYING_STATE_NAMES.get(value, "Unknown")
 
 
 class SecomatDryingStateRawSensor(SecomatSensorBase):

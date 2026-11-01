@@ -14,9 +14,11 @@ from .conftest import PLC_URL, SECOMAT_STATE, cloud_response
     [
         (0, "off", "Idle", "0"),
         (2, "on", "Fan only", "2"),
+        (5, "on", "Transition", "5"),
         (6, "on", "Drying", "6"),
-        (12, "on", "Drying", "12"),
-        (15, "off", "Idle", "15"),
+        (10, "on", "Moisture check", "10"),
+        (12, "on", "Defrost", "12"),
+        (15, "off", "Complete", "15"),
         (4, "unknown", "Unknown", "4"),
         (None, "unknown", "unknown", "unknown"),
         ("missing", "unknown", "unknown", "unknown"),
@@ -47,7 +49,16 @@ async def test_drying_state_readings(
     state = hass.states.get("sensor.secomat_drying_state")
     assert state.state == label
     assert state.attributes["device_class"] == "enum"
-    assert state.attributes["options"] == ["Idle", "Fan only", "Drying", "Unknown"]
+    assert state.attributes["options"] == [
+        "Idle",
+        "Fan only",
+        "Transition",
+        "Drying",
+        "Moisture check",
+        "Defrost",
+        "Complete",
+        "Unknown",
+    ]
     raw_reading = hass.states.get("sensor.secomat_drying_state_raw")
     assert raw_reading.state == raw_state
     assert "state_class" not in raw_reading.attributes

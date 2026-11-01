@@ -49,7 +49,17 @@ EXPECTED_ATTRIBUTES = {
         "device_class": "humidity", "unit_of_measurement": "%", "state_class": "measurement"
     },
     "drying_state": {
-        "device_class": "enum", "options": ["Idle", "Fan only", "Drying", "Unknown"]
+        "device_class": "enum",
+        "options": [
+            "Idle",
+            "Fan only",
+            "Transition",
+            "Drying",
+            "Moisture check",
+            "Defrost",
+            "Complete",
+            "Unknown",
+        ],
     },
     "drying": {"device_class": "running"},
     "problem": {"device_class": "problem"},

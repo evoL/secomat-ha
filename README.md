@@ -17,7 +17,7 @@ A Home Assistant device with 14 entities per configured Secomat:
 | --- | --- |
 | `sensor.secomat_temperature` | Live room temperature (°C) |
 | `sensor.secomat_humidity` | Live room humidity (%) |
-| `sensor.secomat_drying_state` | Physical Drying State: Idle / Fan only / Drying / Unknown |
+| `sensor.secomat_drying_state` | Physical Drying State: Idle / Fan only / Transition / Drying / Moisture check / Defrost / Complete / Unknown |
 | `sensor.secomat_drying_state_raw` | Diagnostic raw integer Drying State, without averaged measurement statistics |
 | `binary_sensor.secomat_drying` | On whenever the fan or compressor is physically running |
 | `binary_sensor.secomat_laundry_detected` | The optical Eye Sensor detects hung laundry |
@@ -35,11 +35,14 @@ showing its Secomat ID and live firmware version. The entity IDs above use the d
 name, **Secomat**; custom names change the default entity ID prefix.
 
 Power Mode and Room Drying describe the program state; Drying State shows what
-the fan and compressor are actually doing. Raw values `0` and `15` mean Idle,
-`2` means Fan only, and `6` and `12` mean Drying. State `15` is a completed cycle
-waiting for laundry removal, or Room Drying standby, with the fan and compressor
-off. Unseen integers remain visible unchanged in the raw diagnostic sensor;
-the enum and Drying binary sensor report unknown for unrecognized or missing readings.
+the physical drying cycle is actually doing. Raw values map to 7 verified cycle phases:
+`0` (Idle), `2` (Fan only), `5` (Transition), `6` (Drying), `10` (Moisture check),
+`12` (Defrost), and `15` (Complete). The hardware reports a 4-bit nibble combining
+auxiliary/valve pre-charge (`0x01`), circulation fan (`0x02`), compressor (`0x04`),
+and defrost/equalization mode (`0x08`), with `15` (`0x0F`) acting as a cycle-complete
+sentinel where all physical outputs are parked off. Unseen integers remain visible
+unchanged in the raw diagnostic sensor; the enum and Drying binary sensor report
+unknown for unrecognized or missing readings.
 
 The existing **Manual on** label is retained for Power Mode `2`, but this state can
 also be entered automatically when Auto detects laundry. It can persist after a

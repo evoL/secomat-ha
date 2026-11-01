@@ -25,8 +25,8 @@ A continuous 24-hour dehumidification mode that keeps the room dry independently
 _Avoid_: Dehumidifier mode
 
 **Drying State**:
-The physical operating state of a Secomat's fan and compressor: `Idle`, `Fan only`, or `Drying`.
-_Avoid_: Secomat state, hardware state, PLC state
+The active phase of a Secomat's drying cycle: `Idle` (standby with all outputs off), `Fan only` (circulation fan pre-run), `Transition` (auxiliary valve and compressor relay switch), `Drying` (fan and compressor dehumidifying), `Moisture check` (compressor resting while the fan circulates air to sense residual moisture rebound), `Defrost` (hot-gas defrost without the circulation fan), or `Complete` (cycle finished and parked with all outputs off).
+_Avoid_: Secomat state, hardware state, PLC state, starting, drying pause, finished
 
 **Target Humidity Level**:
 The desired residual moisture level at which a Secomat stops a laundry drying cycle: `Very dry`, `Dry`, `Medium`, or `Humid`.

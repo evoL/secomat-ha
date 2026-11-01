@@ -39,3 +39,23 @@ POWER_MODE_NAMES = {
     POWER_MODE_READY: "Auto",
     POWER_MODE_ON: "Manual on",
 }
+
+# payload.secomat_state -> physical drying cycle states
+DRYING_STATE_NAMES = {
+    0: "Idle",
+    2: "Fan only",
+    5: "Transition",
+    6: "Drying",
+    10: "Moisture check",
+    12: "Defrost",
+    15: "Complete",
+}
+DRYING_STATE_RUNNING = {
+    0: False,
+    2: True,
+    5: True,
+    6: True,
+    10: True,
+    12: True,
+    15: False,
+}
